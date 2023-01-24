@@ -1,1 +1,2 @@
-# Contains instructions of where each dataset is stored, and what the stored data represent
+# Data directories
+Contains instructions of where each dataset is stored, and what the stored data represent
