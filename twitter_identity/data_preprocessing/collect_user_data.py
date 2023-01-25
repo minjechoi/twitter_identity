@@ -4,15 +4,16 @@ import gzip
 
 from twitter_identity.utils.utils import write_data_file_info
 
-def get_all_uids(input_file, output_file):
+def get_all_uids(input_files, output_file):
     
     S = set()
-    with gzip.open(input_file,'rt') as f:
-        for i,line in enumerate(f):
-            if i==0:
-                continue
-            uid=line.split()[0]
-            S.add(uid)
+    for input_file in input_files:
+        with gzip.open(input_file,'rt') as f:
+            for i,line in enumerate(f):
+                if i==0:
+                    continue
+                uid=line.split()[0]
+                S.add(uid)
     
     with open(output_file,'w') as f:
         for line in S:
@@ -23,5 +24,8 @@ def get_all_uids(input_file, output_file):
     
 if __name__=='__main__':
     get_all_uids(
-        input_file='/shared/3/projects/bio-change/data/raw/description_changes.tsv.gz', 
+        input_files=[
+            '/shared/3/projects/bio-change/data/raw/description_0_changes.tsv.gz',
+            '/shared/3/projects/bio-change/data/raw/description_1plus_changes.tsv.gz',
+            ], 
         output_file='/shared/3/projects/bio-change/data/interim/user_data/all_uids.txt')
