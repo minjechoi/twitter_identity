@@ -19,7 +19,7 @@ def get_all_uids(input_files, output_file):
         for line in S:
             f.write(line+'\n')
             
-    write_data_file_info(__file__, get_all_uids.__name__, output_file, [input_file])
+    write_data_file_info(__file__, get_all_uids.__name__, output_file, input_files)
     return
     
 if __name__=='__main__':
