@@ -10,6 +10,7 @@ import os
 from os.path import join
 import bz2
 import gzip
+from time import time
 
 import ujson as json
 import pandas as pd
@@ -22,7 +23,8 @@ def get_twitter_files():
     """
     twitter_file_names = []
     # period of our treated/control users: 2020-04 to 2021-04
-    base_dir='/nfs/turbo/twitter-decahose/decahose/raw/'
+    # base_dir='/nfs/turbo/twitter-decahose/decahose/raw/'
+    base_dir='/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
     candidates=sorted(os.listdir(base_dir))
     for file in candidates:
         if file.endswith('.bz2'):
@@ -30,7 +32,8 @@ def get_twitter_files():
             if res:
                 y,m=res[0]
                 y,m=int(y),int(m)
-                if y in [2020,2021]:
+                if (y==2020) and (m==4):
+                # if y in [2020,2021]:
                     twitter_file_names.append(join(base_dir,file))
     print(f"{len(twitter_file_names)} files in total!")
     return twitter_file_names
@@ -156,12 +159,12 @@ def collect_tweets(file):
     #         if ln>1000:
     #             break
     #         outf.write(line)
-
+    start=time()
     with bz2.open(file,'rt') as f:
         try:
             for ln,line in enumerate(f):
-                # if ln>100000:
-                #     break
+                if ln>10000:
+                    break
                 # if ln%1000000==0:
                 #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
                 # if ln>1000000:
@@ -228,6 +231,64 @@ def collect_tweets(file):
     print(f'Completed {file.split("/")[-1]}\t{ln} lines!\t{int(time()-start)} seconds!')
     return
 
+def collect_user_info(user_id_file, twitter_file, save_dir):
+    """Collects user info object from the tweets generated between 2020.04.01-2020.05.01 
+
+    Args:
+        user_id_file (_type_): _description_
+        twitter_file (_type_): _description_
+        save_dir (_type_): _description_
+    """
+    tweets=[]
+    users={}
+    start = time()
+
+    # load all user ids
+    uids = set()
+    with open(user_id_file) as f:
+        for uid in f:
+            uids.add(uid.strip())
+
+    # dictionary that stores objects
+    users = {}
+
+    # read tweet file
+    with bz2.open(twitter_file,'rt') as f:
+        try:
+            for ln,line in enumerate(f):
+                try:
+                    obj=json.loads(line)
+                except:
+                    print("Error reading json! Skipping...")
+                    continue
+
+                uid = obj['user']['id_str']
+
+                # get user info first
+                if uid in uids:
+                    if uid not in users:
+                        user = get_user_info(obj['user'])
+                        users[uid] = user
+
+                # get retweet info
+                for status in ['retweeted_status', 'quoted_status']:
+                    if status in obj:
+                        uid = obj[status]['user']['id_str']
+                        if uid in uids:
+                            if uid not in users:
+                                user = get_user_info(obj[status]['user'])
+                                users[uid] = user
+        except:
+            pass
+
+    # save files
+    save_file=twitter_file.split('/')[-1].replace('.bz2','.gz')
+    with gzip.open(join(save_dir, 'users.'+save_file), 'wt') as outf:
+        for obj in users.values():
+            outf.write(json.dumps(obj)+'\n')
+    print(f'Completed {twitter_file.split("/")[-1]}\t{ln} lines!\t{int(time()-start)} seconds!')
+    return
+
 def test_fn(idx):
     sleep(5)
     # print(f'{idx} Slept 10 seconds!')
@@ -245,7 +306,7 @@ def test_multiprocessing():
     n_available_cores = len(sched_getaffinity(0))
     # report the number of logical cpu cores
     print(f'Number of Available CPU cores: {n_available_cores}')
-    pool=Pool(400)
+    pool=Pool(80)
     results=pool.map(test_fn,list(range(1600)))
     # print(sorted(results))
     print("Total time: ",int(time()-start))
@@ -257,7 +318,7 @@ def set_multiprocessing(modulo=None):
     Args:
         modulo (_type_, optional): Module number to set (out of max 10). Defaults to None.
     """
-    pool=Pool(12)
+    pool=Pool(80)
     from os import sched_getaffinity
     n_available_cores = len(sched_getaffinity(0))
     print(f'Number of Available CPU cores: {n_available_cores}')
@@ -270,14 +331,50 @@ def set_multiprocessing(modulo=None):
         files=[files[i] for i in range(len(files)) if i%10==modulo]
     print(len(files),' files to read!')
     print(files[:10])
+
+
+    inputs = []
+
+    user_id_file = '/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/all_uids.txt'
+    save_dir = '/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/user_info'
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    for twitter_file in files:
+        inputs.append((user_id_file, twitter_file, save_dir))
     # try:
-    pool.map(collect_tweets,files)
+    # pool.map(collect_tweets,files)
+    pool.starmap(collect_user_info,inputs)
     # finally:
     pool.close()
+    return
+
+def merge_user_files(start_dir, end_dir):
+    # merge files
+    uid2profile = {}
+    for file in reversed(sorted(os.listdir(start_dir))):
+        with gzip.open(join(start_dir,file),'rt')  as f:
+            for line in f:
+                obj=json.loads(line)
+                uid = obj['id_str']
+                if uid not in uid2profile:
+                    uid2profile[uid] = obj
+    
+    # save file
+    with gzip.open(join(end_dir,'user_profile-2020.04.json.gz'),'wt') as f:
+        for uid,obj in uid2profile.items():
+            f.write(json.dumps(obj)+'\n')
     return
 
 if __name__=='__main__':
     # test_multiprocessing()
     # files = get_twitter_files()
     # collect_tweets(files[0])
-    set_multiprocessing(sys.argv[1])
+    
+    # set_multiprocessing()
+    # set_multiprocessing(sys.argv[1])
+
+    merge_user_files(
+        start_dir='/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/user_info',
+        end_dir='/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/')
