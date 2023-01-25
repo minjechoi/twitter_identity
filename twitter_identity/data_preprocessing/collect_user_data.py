@@ -14,7 +14,7 @@ def get_all_uids(input_files, output_file):
                     continue
                 uid=line.split()[0]
                 S.add(uid)
-    
+
     with open(output_file,'w') as f:
         for line in S:
             f.write(line+'\n')
