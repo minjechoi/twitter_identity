@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from twitter_identity.utils.utils import get_weekly_bins
+from twitter_identity.utils.utils import get_weekly_bins,write_data_file_info
 
 ALL_IDENTITIES = [
     'gender_sexuality', 'age', 'ethnicity', 'religion',
@@ -565,15 +565,16 @@ class IdentityExtactor:
         
         # store all profiles by each user
         uid2profiles = {}
-        for uid,ts,desc in inputs:
+        for uid,ts,desc in tqdm(inputs):
             if uid not in uid2profiles:
                 uid2profiles[uid] = []
             uid2profiles[uid].append((float(ts), desc))
+        print("Sorted profiles by user!")
         
         # extract all required identities
         uid2profile_identities = {uid: [] for uid in uid2profiles.keys()}
         cnt = 0
-        for uid, V in uid2profiles.items():
+        for uid, V in tqdm(uid2profiles.items()):
             cnt += 1
             for v in sorted(V):
                 description = v[1]
@@ -585,10 +586,10 @@ class IdentityExtactor:
                         res = '|'.join(list(set(res.split('|'))))
                         obj[identity] = res
                 uid2profile_identities[uid].append(obj)
+        print("Extracted identities from each profile!")
                 
         return uid2profile_identities
         
-
     def extract_from_all_profiles(self, identity, ex):
 
         uid2profiles = {}
@@ -672,6 +673,53 @@ def test_individual_extraction(text,identity='gender_sexuality'):
     IdEx = IdentityExtactor()
     return IdEx.identity2extractor[identity](text)
 
+def extract_identities_from_file(
+    input_file:str,
+    output_file:str):
+    """Reads a file, extracts all identities, and saves it to another file
+    Args:
+        input_file (str): directory of input file
+        output_file (str): directory of output file
+    """
+    
+    # create object
+    IdEx = IdentityExtactor()
+    
+    # load input data into class
+    with gzip.open(input_file,'r') as f:
+        for ln,_ in enumerate(f):
+            continue
+        
+    inputs = []
+    with gzip.open(input_file,'rt') as f:
+        for i,line in enumerate(tqdm(f,total=ln)):
+            if i==0:
+                continue
+            uid,ts,description,_=line.split('\t')
+            ts=float(ts)
+            description = description.strip()
+            inputs.append((uid,ts,description))
+    print("Input data loaded!")
+    
+    uid2profiles = IdEx.extract_identities_from_profiles(inputs)
+    
+    # Write to output file
+    with gzip.open(output_file,'wt') as outf:
+        for uid,V in tqdm(uid2profiles.items()):
+            for obj in V:
+                dt=obj['dt']
+                line_out=f'{uid}\t{dt}\t'
+                for k,v in obj.items():
+                    if k!='dt':
+                        line_out+=f'|{k}:{v}'
+                line_out+='\n'
+                outf.write(line_out)
+    print(f'Saved to {output_file}!')    
+    write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
+    return
+
+    
+            
 
 
 
@@ -682,7 +730,10 @@ def test_individual_extraction(text,identity='gender_sexuality'):
 
 if __name__=='__main__':
     # test 
-    text='23 | he/him | cancer'
-    res=test_individual_extraction(text,'gender_sexuality')
-    print(res)
+    # text='23 | he/him | cancer'
+    # res=test_individual_extraction(text,'gender_sexuality')
+    # print(res)
 
+    input_file = '/shared/3/projects/bio-change/data/raw/description_changes.tsv.gz'
+    output_file = '/shared/3/projects/bio-change/data/interim/identity_extracted-all_users.tsv.gz'
+    extract_identities_from_file(input_file,output_file)
