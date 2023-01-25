@@ -28,4 +28,4 @@ if __name__=='__main__':
             '/shared/3/projects/bio-change/data/raw/description_0_changes.tsv.gz',
             '/shared/3/projects/bio-change/data/raw/description_1plus_changes.tsv.gz',
             ], 
-        output_file='/shared/3/projects/bio-change/data/interim/user_data/all_uids.txt')
+        output_file='/shared/3/projects/bio-change/data/interim/all_uids/all_uids.txt')
