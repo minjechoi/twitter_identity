@@ -25,7 +25,7 @@ def get_all_uids(input_files, output_file):
 if __name__=='__main__':
     get_all_uids(
         input_files=[
-            '/shared/3/projects/bio-change/data/raw/description_0_changes.tsv.gz',
-            '/shared/3/projects/bio-change/data/raw/description_1plus_changes.tsv.gz',
+            '/shared/3/projects/bio-change/data/raw/description_changes_0_changes.tsv.gz',
+            '/shared/3/projects/bio-change/data/raw/description_changes_1plus_changes.tsv.gz',
             ], 
         output_file='/shared/3/projects/bio-change/data/interim/all_uids/all_uids.txt')
