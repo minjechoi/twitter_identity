@@ -5,7 +5,7 @@ Contains instructions of where each dataset is stored, and what the stored data 
 ├── data                        <- Project data
 │   ├── external                    <- Data from third party sources.
 │   ├── interim                     <- Intermediate data that has been transformed.
-│   │   └── identity_by_week            <- Directory containing the displayed identity subcategories for users that had at least one identity shown (4,701,736)
+│   │   └── identity_by_week            <- Directory containing the displayed identity subcategories for users that had at least one identity shown (4,732,035)
 │   │
 │   ├── processed                   <- The final, canonical data sets for modeling.
 │   └── raw                         <- The original, immutable data dump.
