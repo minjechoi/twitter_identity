@@ -1,1 +1,2 @@
 script_directory    function_name   output_file input_files current_time
+/home/minje/projects/twitter_identity/twitter_identity/data_preprocessing/collect_user_data.py	get_all_uids	/shared/3/projects/bio-change/data/interim/user_data/all_uids.txt	/shared/3/projects/bio-change/data/raw/description_changes.tsv.gz	2023-01-25 01:52:03.797901
