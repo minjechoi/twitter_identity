@@ -33,7 +33,7 @@ def write_data_file_info(script_directory, function_name, output_file,  input_fi
     """
     if input_files:
         input_files=','.join(input_files)
-    curr_time = datetime.now()
+    curr_time = str(datetime.now())
     with open(log_file,'a') as f:
         f.write('\t'.join([script_directory,function_name,output_file,input_files,curr_time])+'\n')
     return
