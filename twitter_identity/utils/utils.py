@@ -20,7 +20,7 @@ def get_weekly_bins(timestamp):
     diff = dt_current - dt_base
     return diff.days / 7
 
-def write_data_file_info(script_directory, function_name, output_file,  input_files=None, log_file='/home/minje/projects/tweet-identity/logs/log_files.tsv'
+def write_data_file_info(script_directory, function_name, output_file,  input_files=None, log_file='/home/minje/projects/tweet_identity/logs/log_files.tsv'
     ):
     """A function that writes the information used to create a file and logs it
 
