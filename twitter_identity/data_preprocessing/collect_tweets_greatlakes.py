@@ -318,7 +318,7 @@ def set_multiprocessing(modulo=None):
     Args:
         modulo (_type_, optional): Module number to set (out of max 10). Defaults to None.
     """
-    pool=Pool(80)
+    pool=Pool(32)
     from os import sched_getaffinity
     n_available_cores = len(sched_getaffinity(0))
     print(f'Number of Available CPU cores: {n_available_cores}')
@@ -328,7 +328,7 @@ def set_multiprocessing(modulo=None):
     files=get_twitter_files()
     if type(modulo)==str:
         modulo=int(modulo)
-        files=[files[i] for i in range(len(files)) if i%10==modulo]
+        files=[files[i] for i in range(len(files)) if i%2==modulo]
     print(len(files),' files to read!')
     print(files[:10])
 
