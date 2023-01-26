@@ -14,8 +14,9 @@ Contains instructions of where each dataset is stored, and what the stored data 
 │   │   └── identity_classifier-train_data  <- Directory containing the training datasets for the identity classifier
 │   │
 │   └── raw                         <- The original, immutable data dump.
-│       ├── description_changes_0_changes.tsv.gz        <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
-│       └── description_changes_1plus_changes.tsv.gz    <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
+│       └── description_changes        <- Directory containing profile updates of 15M users who were active in 2020/4/1 and 2021/4/1
+│           ├── description_changes_0_changes.tsv.gz        <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
+│           └── description_changes_1plus_changes.tsv.gz    <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
 │
 └── README.md
 ```
