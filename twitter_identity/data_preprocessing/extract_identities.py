@@ -308,7 +308,7 @@ class IdentityExtactor:
         #     re.compile(r'\b(?:single|a|happy|proud|lucky|working|devoted|loving|blessed|busy|boy|girl|hockey|soccer|baseball|regular)\s?(father|mother|dad|mom|mum|husband|wife)')
         # ]
         re_exclude_list=[
-            re.compile(r'\b(my|your|ur) (\w+ )?(father|mother|dad|mom(ma)?|mum)\b'),
+            re.compile(r'\b(my|y?our|ur|his|her|their) (\w+ )?(father|mother|dad|mom(ma)?|mum|sister|brother|husband|wifey?)\b'),
             re.compile(r'\b(dog|cat|pup|kitt(en|ies|y)|fur(ry|bab)|pet)s?'),
             re.compile(r'sugar')
         ]
@@ -319,7 +319,7 @@ class IdentityExtactor:
         #         flag=False
 
         ## step 2: for substring
-        reg = re.compile(r'(father|dad|daddy|mom|mommy|momma|mother|mum|grandma|gran|granny|husband|wife|sister|brother|married|fianc(?:é|e|ée|ee))(?:$| (?:of|to))')
+        reg = re.compile(r'\b(?:grand?)?(father|dad|daddy|mom|mommy|momma|mother|mum|grandma|gran|granny|husband|wife|sister|brother|married|fianc(?:é|e|ée|ee))(?:$| (?:of|to))')
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
             res=reg.findall(substring)
