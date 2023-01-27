@@ -186,6 +186,9 @@ class IdentityExtactor:
             res = reg.findall(text)
             if res:
                 results.extend(res)
+                
+        # remove 01/28 -like strings
+        text = re.sub(r'[0-9]{1,4}(\/[0-9]{1,4}){1,}', '', text)
 
         ## step 2: for substring-level
         substrings = self.split_description_to_substrings(text)
@@ -590,86 +593,8 @@ class IdentityExtactor:
                 
         return uid2profile_identities
         
-    def extract_from_all_profiles(self, identity, ex):
 
-        uid2profiles = {}
-        base_dir = '/shared/2/projects/bio-change/data/user-descriptions'
-        
-
-
-        out = []
-        for i, (uid, V) in enumerate(uid2profile_identities.items()):
-            tmp_out = [uid]
-            curr = 0
-            phrase = ''
-            for obj in V:
-                dt = obj['dt']
-                w1 = get_weekly_bins(dt)
-                w2 = int(np.ceil(w1))
-                if curr == w2:
-                    continue
-                for i in range(curr, w2):
-                    tmp_out.append(phrase)
-                #         out.append((i,phrase))
-                if len(obj) == 1:
-                    phrase = ''
-                else:
-                    phrase = obj[identity]
-                    # phrase = '|'.join(obj[identity])
-                curr = w2
-            if curr < 57:
-                for i in range(curr, 57):
-                    tmp_out.append(phrase)
-
-            out.append(tmp_out)
-
-        df = pd.DataFrame(out, columns=['user_id'] + ['week_%02d' % i for i in range(57)])
-
-        save_dir='/shared/2/projects/bio-change/working-dir/weekly-all-identities/1plus_changes/%s.df.tsv.gz'%identity
-        df.to_csv(save_dir,sep='\t',index=False,compression='gzip')
-        return
-
-
-    def process_extraction(id_name,id_fn,file_name):
-        load_dir='/shared/2/projects/bio-change/data/4.description-changes/'
-        save_file_name = '01.%s.%s.tsv.gz'%(file_name.split('.')[0],id_name)
-        save_dir='/shared/2/projects/bio-change/data/4.description-changes/preprocessing'
-        uid2bio={}
-        # columns=['user_id']+['week_%02d'%i for i in range(-4,60)]
-        # n_weeks = len(range(-4,60))
-        with gzip.open(join(load_dir,file_name)) as f:
-            for line in f:
-            # for line in tqdm(f,total=6073057):
-                line=line.decode('utf-8')
-                uid,ts,description=line.strip().split('\t')
-                if uid not in uid2bio:
-                    uid2bio[uid] = []
-                week=get_weekly_bins(float(ts))
-                if (week < -4) or (week >= 60):
-                    continue
-                res=id_fn(description.lower())
-                uid2bio[uid].append((week,res))
-                # if res:
-                #     uid2bio[uid].append('week_%02d|'%week+res)
-                # else:
-                #     uid2bio[uid].append('week_%02d|'%week+'None')
-
-        with gzip.open(join(save_dir,save_file_name),'wt') as outf:
-            for uid,V in uid2bio.items():
-                flag=False
-                output=[]
-                for week,res in V:
-                    if res==None:
-                        output.append('week_%02d|None'%week)
-                    else:
-                        output.append('week_%02d|'%week+res)
-                        flag=True
-                if flag:
-                    outf.write('\t'.join([uid]+output)+'\n')
-        print("Finished processing and saving ",id_name,file_name)
-        return
-
-def test_individual_extraction(text,identity='gender_sexuality'):
+def test_individual_extraction(text,identity='age'):
     IdEx = IdentityExtactor()
     return IdEx.identity2extractor[identity](text)
 
@@ -730,10 +655,10 @@ def extract_identities_from_file(
 
 if __name__=='__main__':
     # test 
-    # text='23 | he/him | cancer'
-    # res=test_individual_extraction(text,'gender_sexuality')
-    # print(res)
+    text='23yr | he/him | cancer'
+    res=test_individual_extraction(text,'age')
+    print(res)
 
-    input_file = '/shared/3/projects/bio-change/data/raw/description_changes.tsv.gz'
-    output_file = '/shared/3/projects/bio-change/data/interim/identity_extracted-all_users.tsv.gz'
-    extract_identities_from_file(input_file,output_file)
+    # input_file = '/shared/3/projects/bio-change/data/raw/description_changes.tsv.gz'
+    # output_file = '/shared/3/projects/bio-change/data/interim/identity_extracted-all_users.tsv.gz'
+    # extract_identities_from_file(input_file,output_file)
