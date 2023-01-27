@@ -238,8 +238,10 @@ class IdentityExtactor:
         Returns:
             _type_: Formatted string listing all identities
         """
-        
+
         results = []
+        text=text.lower()
+        
         re_list = [
             re.compile(
                 r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
@@ -269,6 +271,7 @@ class IdentityExtactor:
             return
 
     def extract_religion(self, text):
+        text=text.lower()
         results = []
 
         re_list=[
@@ -296,7 +299,9 @@ class IdentityExtactor:
             return
 
     def extract_relationship(self, text):
+        text=text.lower()
         results = []
+        
         ## step 1: for entire string
         re_list=[
             re.compile(r'\b(married|(?:father|mother|dad|daddy|mom|mum|husband|wifey?|son|daughter) (?:of|to))'),
@@ -331,6 +336,7 @@ class IdentityExtactor:
             return
 
     def extract_education(self, text):
+        text=text.lower()
         results = []
 
 
@@ -363,7 +369,9 @@ class IdentityExtactor:
             return
 
     def extract_occupation(self, text):
+        text=text.lower()
         results = []
+        
         text=text.lower()
         reg_student=re.compile(r'(?:student\b|(?:junior|freshman|senior|sophomore) (?:at|@|year)|\bclass of\b|(?:grad(?:uate)?|med(?:ical)?|pharm(?:acy)?|law) school| ph/.?d candidate|college|\buniv(?:ersity)?\b)')
 
@@ -452,8 +460,8 @@ class IdentityExtactor:
             return
 
     def extract_political(self, text):
-        results = []
         text=text.lower()
+        results = []
 
         # conservative pronouns
         reg_negate = re.compile(r'(?:\bnot?\b|\bnever|hat(?:e|red|ing)|\banti|\bex\b|idiot|stupid|dumb|fool|wrong|enemy|worst|dump|dislike|detest|despise|troll|impeach|imprison|fuck|danger|threat|terrible|horrible|survive|shit)')
@@ -507,7 +515,9 @@ class IdentityExtactor:
             return
 
     def extract_personal(self, text):
+        text=text.lower()
         results = []
+        
         re_list = [
             re.compile(
                 r'\b(insta(?:gram)?|ig|youtube|yt|cash\s?app|tumblr|twitch|venmo|web\s?(?:site|page)|whatsapp|e-?mail|snapchat|' + \
@@ -525,7 +535,9 @@ class IdentityExtactor:
             return
 
     def extract_sensitive_personal(self, text):
+        text=text.lower()
         results = []
+        
         re_list = [
             re.compile(
                 r'\b(surviv(?:ed|or)|depress(?:ed|ion)|autis(?:m|tic)|anxiety|adhd|diabetes|fibromyalgia|cancer|trauma(?:tized|tizing)?|' + \
