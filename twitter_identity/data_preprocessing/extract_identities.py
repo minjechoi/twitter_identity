@@ -262,7 +262,7 @@ class IdentityExtactor:
                     if reg.search(text):
                         flag=True
                         break
-                if ~flag:
+                if flag==False:
                     results.extend(res)
         if results:
             results = list(set(results))
@@ -290,7 +290,7 @@ class IdentityExtactor:
                     if reg.search(text):
                         flag=True
                         break
-                if ~flag:
+                if flag==False:
                     results.extend(res)
         if results:
             results = list(set(results))
@@ -302,33 +302,35 @@ class IdentityExtactor:
         text=text.lower()
         results = []
         
-        ## step 1: for entire string
-        re_list=[
-            re.compile(r'\b(married|(?:father|mother|dad|daddy|mom|mum|husband|wifey?|son|daughter) (?:of|to))'),
-            re.compile(r'\b(?:single|a|happy|proud|lucky|working|devoted|loving|blessed|busy|boy|girl|hockey|soccer|baseball|regular)\s?(father|mother|dad|mom|mum|husband|wife)')
-        ]
+        # ## step 1: for entire string
+        # re_list=[
+        #     re.compile(r'\b(?:married|(father|mother|dad|daddy|mom|mum|husband|wifey?|son|daughter) (?:of|to))'),
+        #     re.compile(r'\b(?:single|a|happy|proud|lucky|working|devoted|loving|blessed|busy|boy|girl|hockey|soccer|baseball|regular)\s?(father|mother|dad|mom|mum|husband|wife)')
+        # ]
         re_exclude_list=[
             re.compile(r'\b(my|your|ur) (\w+ )?(father|mother|dad|mom(ma)?|mum)\b'),
-            re.compile(r'(dog|cat|pup|kitt(en|ies|y)|fur(ry|bab)|pet)'),
+            re.compile(r'\b(dog|cat|pup|kitt(en|ies|y)|fur(ry|bab)|pet)s?'),
             re.compile(r'sugar')
         ]
 
-        for reg in re_list:
-            res = reg.findall(text)
-            if res:
-                flag=False
-                for reg in re_exclude_list:
-                    if reg.search(text):
-                        flag=True
-                        break
-                if ~flag:
-                    results.extend(res)
+        # for reg in re_list:
+        #     res = reg.findall(text)
+        #     if res:
+        #         flag=False
 
         ## step 2: for substring
+        reg = re.compile(r'(father|dad|daddy|mom|mommy|momma|mother|mum|grandma|gran|granny|husband|wife|sister|brother|married|fianc(?:é|e|ée|ee))(?:$| (?:of|to))')
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
-            if substring in set(['father','dad','daddy','mom','mommy','momma','mother','mum','husband','wife']):
-                results.append(substring)
+            res=reg.findall(substring)
+            if res:
+                flag=False
+                for reg_exclude in re_exclude_list:
+                    if reg_exclude.search(substring):
+                        flag=True
+                        break
+                if flag==False:
+                    results.extend(res)
         if results:
             results = list(set(results))
             return '|'.join([x.strip() for x in results])
@@ -359,7 +361,7 @@ class IdentityExtactor:
                     if reg.search(text):
                         flag=True
                         break
-                if ~flag:
+                if flag==False:
                     results.extend(res)
 
         if results:
@@ -555,7 +557,7 @@ class IdentityExtactor:
                     if reg.search(text):
                         flag=True
                         break
-                if ~flag:
+                if flag==False:
                     results.extend(res)
 
         if results:
