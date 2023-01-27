@@ -40,7 +40,7 @@ class IdentityExtactor:
             'education':self.extract_education,
             'occupation':self.extract_occupation,
             'political':self.extract_political,
-            'personal':self.extract_personal,
+            'personal':self.extract_social_media,
             'sensitive':self.extract_sensitive_personal
         }
         
@@ -244,22 +244,38 @@ class IdentityExtactor:
         
         re_list = [
             re.compile(
-                r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
+                r'\b(african|asian|hispanic|latin(?:a|o))'
+                # r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
             ),
-            re.compile(
-                r'\b(🇺🇸|🇬🇧|🇨🇦|🇮🇪|🇧🇷|🇲🇽|󠁧󠁢󠁧🇯🇵|🇪🇸|🇮🇹|🇫🇷|🇩🇪|🇳🇱|🇮🇳|🇮🇩|🇹🇷|🇸🇦|🇹🇭|🇵🇭|🇦🇷|🇰🇷|🇪🇬|🇲🇾|🇨🇴)',
-            )
+            # re.compile(
+            #     r'\b(🇺🇸|🇬🇧|🇨🇦|🇮🇪|🇧🇷|🇲🇽|󠁧󠁢󠁧🇯🇵|🇪🇸|🇮🇹|🇫🇷|🇩🇪|🇳🇱|🇮🇳|🇮🇩|🇹🇷|🇸🇦|🇹🇭|🇵🇭|🇦🇷|🇰🇷|🇪🇬|🇲🇾|🇨🇴)',
+            # )
         ]
+        
+        reg = re.compile(r'\b(african|asian|hispanic|latin(?:a|o))')
         re_exclude_list = [
-            re.compile(r'(learn|stud(?:y|ie)|language|lingual|speak|food|dish|cuisine|culture|music|drama)'),
+            re.compile(r'(learn|stud(?:y|ie)|language|lingual|speak|food|dish|cuisine|culture|music|drama|tv|movie)'),
             re.compile(r'\b(asian|black)\s?hate')
         ]
-        for reg in re_list:
-            res = reg.findall(text)
+        # for reg in re_list:
+        #     res = reg.findall(text)
+        #     if res:
+        #         flag=False
+        #         for reg in re_exclude_list:
+        #             if reg.search(text):
+        #                 flag=True
+        #                 break
+        #         if flag==False:
+        #             results.extend(res)
+        
+        ## step 2: for substring-level
+        substrings = self.split_description_to_substrings(text)
+        for substring in substrings:
+            res=reg.findall(substring)
             if res:
                 flag=False
-                for reg in re_exclude_list:
-                    if reg.search(text):
+                for reg_exclude in re_exclude_list:
+                    if reg_exclude.search(substring):
                         flag=True
                         break
                 if flag==False:
@@ -274,15 +290,23 @@ class IdentityExtactor:
         text=text.lower()
         results = []
 
-        re_list=[
-            re.compile(r"\b(allah|athies(?:t|m)|catholic|christ(?:ian(?:ity)?)?|church|god's|(?:of|for) god|god (?:comes )?first|god is|muslim|psalms?|philippians)\b")
-            # re.compile(r"\b(islam\w*|messiah|muslim|hind(?:u|i)\w*|christ(?:ian)|church|jesus|catholic|athies(?:t|m)|(?:of|for) god|god's|god (?:comes )?first|pastor|sermon)\b"),
-            # re.compile(r'((?:romans|james|proverbs|isiah|galatians|ephesians|paul|john|mark|luke|psalms|genesis|corinthians|philippians) [0-9]+\:)')
-        ]
+        re_cat = re.compile(r"\b(jesus|bible|catholic|christ(?:ian(?:ity)?)?|church|psalms?|philippians)\b")
+        re_mus = re.compile(r"\b(allah|muslim|islam|quran)\b")
+        re_ath = re.compile(r"\b(atheis(?:t|m))\b")
+        re_hin = re.compile(r"\b(hind(?:i|u(?:ism)?))\b")
+        re_gen = re.compile(r"\b(god's|(?:of|for) god|god (?:comes )?first|god is)\b")
+        # re_list=[
+        #     re.compile(r"\b(allah|athies(?:t|m)|catholic|christ(?:ian(?:ity)?)?|church|god's|(?:of|for) god|god (?:comes )?first|god is|muslim|psalms?|philippians)\b")
+        #     # re.compile(r"\b(islam\w*|messiah|muslim|hind(?:u|i)\w*|christ(?:ian)|church|jesus|catholic|athies(?:t|m)|(?:of|for) god|god's|god (?:comes )?first|pastor|sermon)\b"),
+        #     # re.compile(r'((?:romans|james|proverbs|isiah|galatians|ephesians|paul|john|mark|luke|psalms|genesis|corinthians|philippians) [0-9]+\:)')
+        # ]
         re_exclude_list=[
             re.compile(r'(school|\bhs\b|univ|for\s?sake|god(father|mother|dess| of)|swear to god|my god)')
         ]
-        for reg in re_list:
+                
+        for reg,subcategory in zip(
+            [re_cat,re_mus,re_hin,re_ath,re_gen],
+            ['cath/christ','islam','hinduism','atheism','general']):
             res = reg.findall(text)
             if res:
                 flag=False
@@ -291,10 +315,13 @@ class IdentityExtactor:
                         flag=True
                         break
                 if flag==False:
-                    results.extend(res)
+                    results.append((subcategory,res))
         if results:
-            results = list(set(results))
-            return '|'.join([x.strip() for x in results])
+            out=[]
+            for subcategory,V in results:
+                V=list(set(V))
+                out.append(f'{subcategory}:%s'%','.join(V))
+            return '|'.join(out)
         else:
             return
 
@@ -516,7 +543,7 @@ class IdentityExtactor:
         else:
             return
 
-    def extract_personal(self, text):
+    def extract_social_media(self, text):
         text=text.lower()
         results = []
         
