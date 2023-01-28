@@ -529,6 +529,7 @@ class IdentityExtactor:
             return
         
 
+
 def test_individual_extraction(text,identity='gender'):
     IdEx = IdentityExtactor()
     return IdEx.identity2extractor[identity](text)
