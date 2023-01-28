@@ -17,9 +17,9 @@ from tqdm import tqdm
 from twitter_identity.utils.utils import get_weekly_bins,write_data_file_info
 
 ALL_IDENTITIES = [
-    'gender_sexuality', 'age', 'ethnicity', 'religion',
+    'gender', 'age', 'ethnicity', 'religion',
     'relationship', 'education', 'occupation', 'political',
-    'personal', 'sensitive']
+    'social_media', 'sensitive']
 
 def get_emoji_regexp():
     # Sort emoji by length to make sure multi-character emojis are
@@ -32,15 +32,15 @@ class IdentityExtactor:
     def __init__(self, include_emojis=True):
         self.include_emojis=include_emojis
         self.identity2extractor = {
-            'gender_sexuality':self.extract_gender_sexuality,
+            'gender':self.extract_gender,
             'age':self.extract_age,
-            'ethnicity':self.extract_ethnicity,
+            # 'ethnicity':self.extract_ethnicity,
             'religion':self.extract_religion,
             'relationship':self.extract_relationship,
             'education':self.extract_education,
             'occupation':self.extract_occupation,
             'political':self.extract_political,
-            'personal':self.extract_social_media,
+            'social_media':self.extract_social_media,
             'sensitive':self.extract_sensitive_personal
         }
         
@@ -62,7 +62,7 @@ class IdentityExtactor:
             x and x.strip() !="" and not x.strip() in "|•&*#;~°.!…-/–")]
         return spl
 
-    def extract_gender_sexuality(self, text):
+    def extract_gender(self, text):
         """Function for extracting phrases indicative of preferred gender of sexuality
 
         Args:
@@ -306,7 +306,7 @@ class IdentityExtactor:
 
         for reg,subcategory in zip(
             [re_cat,re_mus,re_hin,re_ath,re_gen],
-            ['cath/christ','islam','hinduism','atheism','general']):
+            ['religion_cath/christ','religion_islam','religion_hinduism','religion_atheism','religion_general']):
             res = reg.findall(text)
             if res:
                 flag=False
@@ -346,23 +346,36 @@ class IdentityExtactor:
         #         flag=False
 
         ## step 2: for substring
-        reg = re.compile(r'\b(?:grand?)?(father|dad|daddy|mom|mommy|momma|mother|mum|grandma|gran|granny|husband|wife|sister|brother|married|fianc(?:é|e|ée|ee))(?:$| (?:of|to))')
+        # reg = re.compile(r'\b(?:grand?)?(father|dad|daddy|mom|mommy|momma|mother|mum|grandma|gran|granny|husband|wife|sister|brother|married|fianc(?:é|e|ée|ee))(?:$| (?:of|to))')
+        reg_parent = re.compile(r'\b(?:grand?)?(father|dad|daddy|mom|mommy|momma|mother|mum|grandma|gran|granny)(?:$| (?:of|to))')
+        reg_partner = re.compile(r'\b(husband|wife|married|fianc(?:é|e|ée|ee))(?:$| (?:of|to))')
+        reg_sibling = re.compile(r'\b(bro(?:ther)?|sis(?:ter)?)(?:$| (?:of|to))')
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
-            res=reg.findall(substring)
-            if res:
-                flag=False
-                for reg_exclude in re_exclude_list:
-                    if reg_exclude.search(substring):
-                        flag=True
-                        break
-                if flag==False:
-                    results.extend(res)
+            for subcategory,reg in zip(
+                ['relationship_parent','relationship_partner','relationship_sibling'],
+                [reg_parent,reg_partner,reg_sibling]
+            ):
+                res=reg.findall(substring)
+                if res:
+                    flag=False
+                    for reg_exclude in re_exclude_list:
+                        if reg_exclude.search(substring):
+                            flag=True
+                            break
+                    if flag==False:
+                        results.append((subcategory,res))
+                        
         if results:
-            results = list(set(results))
-            return '|'.join([x.strip() for x in results])
+            out=[]
+            for subcategory,V in results:
+                V=list(set(V))
+                out.append(f'{subcategory}:%s'%','.join(V))
+            return '|'.join(out)
         else:
             return
+    
+    
 
     def extract_education(self, text):
         text=text.lower()
@@ -402,7 +415,7 @@ class IdentityExtactor:
                     results.extend(res)
         if results:
             results = list(set(results))
-            return '|'.join([x.strip() for x in results])
+            return 'education:%s'%'|'.join([x.strip() for x in results])
         else:
             return
 
@@ -457,7 +470,7 @@ class IdentityExtactor:
                     results.append(('occupation_art',phrase))
 
             # tech
-            reg_art = re.compile(r'\b(?:engineer|architect|programmer|developer)\b')
+            reg_art = re.compile(r'\b(?:engineer|architect|programmer|developer|technician)\b')
             res=reg_art.findall(substring)
             if res:
                 for phrase in res:
@@ -519,7 +532,7 @@ class IdentityExtactor:
                 for phrase in res:
                     res_negate=reg_negate.findall(substring)
                     if res_negate:
-                        results.append(('political_anti_conservative','_'.join(res_negate)+'_'+phrase))
+                        results.append(('political_anticonservative','_'.join(res_negate)+'_'+phrase))
                     else:
                         results.append(('political_conservative',phrase))
             for reg in reg_lib_list:
@@ -527,7 +540,7 @@ class IdentityExtactor:
                 for phrase in res:
                     res_negate=reg_negate.findall(substring)
                     if res_negate:
-                        results.append(('political_anti_liberal','_'.join(res_negate)+'_'+phrase))
+                        results.append(('political_antiliberal','_'.join(res_negate)+'_'+phrase))
                     else:
                         results.append(('political_liberal',phrase))
 
@@ -567,7 +580,7 @@ class IdentityExtactor:
 
         if results:
             results = list(set(results))
-            return '|'.join([x.strip() for x in results])
+            return 'socialmedia:'+'|'.join([x.strip() for x in results])
         else:
             return
 
@@ -597,50 +610,9 @@ class IdentityExtactor:
 
         if results:
             results = list(set(results))
-            return '|'.join([x.strip() for x in results])
+            return 'sensitive:'+'|'.join([x.strip() for x in results])
         else:
             return
-        
-    def extract_identities_from_profiles(self, inputs, list_of_identities=ALL_IDENTITIES):
-        """From a list of user objects, extracts their identities and creates a dictionary where key: user id, value: list of identities extractes from each profile, sorted by date
-
-        Args:
-            inputs (list): A list of tuples where the values are (user id, timestamp, description)
-            list_of_identities (list, optional): _description_. Defaults to ['gender_sexuality', 'age', 'ethnicity', 'religion', 'relationship', 'education', 'occupation', 'political', 'personal', 'sensitive'].
-        """
-        
-        # Assertion on list of identities        
-        assert len(list_of_identities), "list_of_identities should contain at least one identity!"
-        id_list=', '.join(ALL_IDENTITIES)
-        for identity in list_of_identities:
-            assert identity in ALL_IDENTITIES, f"{identity} does not belong to our list of identities! It should be either {id_list}"
-        
-        # store all profiles by each user
-        uid2profiles = {}
-        for uid,ts,desc in tqdm(inputs):
-            if uid not in uid2profiles:
-                uid2profiles[uid] = []
-            uid2profiles[uid].append((float(ts), desc))
-        print("Sorted profiles by user!")
-        
-        # extract all required identities
-        uid2profile_identities = {uid: [] for uid in uid2profiles.keys()}
-        cnt = 0
-        for uid, V in tqdm(uid2profiles.items()):
-            cnt += 1
-            for v in sorted(V):
-                description = v[1]
-                obj = {'dt': v[0]}
-                
-                for identity,extractor in self.identity2extractor.items():                    
-                    res = extractor(description.lower())
-                    if res:
-                        res = '|'.join(list(set(res.split('|'))))
-                        obj[identity] = res
-                uid2profile_identities[uid].append(obj)
-        print("Extracted identities from each profile!")
-                
-        return uid2profile_identities
         
 
 def test_individual_extraction(text,identity='age'):
@@ -649,45 +621,70 @@ def test_individual_extraction(text,identity='age'):
 
 def extract_identities_from_file(
     input_file:str,
-    output_file:str):
+    output_file:str,
+    identities:list
+    ):
     """Reads a file, extracts all identities, and saves it to another file
     Args:
         input_file (str): directory of input file
         output_file (str): directory of output file
+        identities (list): list of identities (str) to include
     """
     
     # create object
     IdEx = IdentityExtactor()
     
     # load input data into class
-    with gzip.open(input_file,'r') as f:
-        for ln,_ in enumerate(f):
-            continue
+    if input_file.endswith('.gz'):
+        f=gzip.open(input_file,'rt')
+    else:
+        f=open(input_file,'r')
         
+    for ln,_ in enumerate(f):
+        continue
+    
+    f.close()
+     
+    # load inputs into list   
     inputs = []
-    with gzip.open(input_file,'rt') as f:
-        for i,line in enumerate(tqdm(f,total=ln)):
-            if i==0:
-                continue
-            uid,ts,description,_=line.split('\t')
-            ts=float(ts)
-            description = description.strip()
-            inputs.append((uid,ts,description))
+    if input_file.endswith('.gz'):
+        f=gzip.open(input_file,'rt')
+    else:
+        f=open(input_file,'r')
+        
+    for i,line in enumerate(tqdm(f,total=ln)):
+        if i==0:
+            continue
+        if i>1000:
+            break
+        line=line.split('\t')
+        uid,ts,description = line[:3]
+        # uid,ts,description,_=line.split('\t')
+        ts=float(ts)
+        description = description.strip()
+        inputs.append((uid,ts,description))
+    f.close()
     print("Input data loaded!")
     
-    uid2profiles = IdEx.extract_identities_from_profiles(inputs)
-    
+    # extract identities from input list
+    outputs = []
+    for uid,ts,desc in tqdm(inputs):     
+        obj = {}
+        for identity in identities:
+            extractor = IdEx.identity2extractor[identity]
+            res = extractor(desc.lower())
+            if res:
+                obj[identity] = res
+        outputs.append((uid,ts,obj))
+
     # Write to output file
     with gzip.open(output_file,'wt') as outf:
-        for uid,V in tqdm(uid2profiles.items()):
-            for obj in V:
-                dt=obj['dt']
-                line_out=f'{uid}\t{dt}\t'
-                for k,v in obj.items():
-                    if k!='dt':
-                        line_out+=f'|{k}:{v}'
-                line_out+='\n'
-                outf.write(line_out)
+        for uid,ts,obj in tqdm(outputs):
+            out = []
+            for identity,v in obj.items():
+                out.append(v)
+            line = f'{uid}\t{ts}\t%s\n'%'|'.join(out)
+            outf.write(line)
     print(f'Saved to {output_file}!')    
     write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
     return
@@ -704,10 +701,13 @@ def extract_identities_from_file(
 
 if __name__=='__main__':
     # test 
-    text='23yr | he/him | cancer'
-    res=test_individual_extraction(text,'age')
-    print(res)
+    # text='23yr | he/him | cancer'
+    # res=test_individual_extraction(text,'age')
+    # print(res)
 
-    # input_file = '/shared/3/projects/bio-change/data/raw/description_changes.tsv.gz'
-    # output_file = '/shared/3/projects/bio-change/data/interim/identity_extracted-all_users.tsv.gz'
-    # extract_identities_from_file(input_file,output_file)
+    input_file = '/shared/3/projects/bio-change/data/interim/description_changes/splitted/0_changes_aa'
+    output_file = '/shared/3/projects/bio-change/data/interim/description_changes/test.json.gz'
+    extract_identities_from_file(
+        input_file,
+        output_file,
+        identities=['religion'])
