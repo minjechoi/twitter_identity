@@ -80,78 +80,19 @@ class IdentityExtactor:
         reg = re.compile(r'\b(?:he|him|his)\s?(?:/|\s)?\s?(?:him|his)\b')
         res = reg.findall(text)
         for phrase in res:
-            results.append(('gender_men',phrase))
+            results.append(('men',phrase))
 
         # women pronouns
         reg = re.compile(r'\b(?:she|her)\s?(?:/|\s)?\s?(?:she|hers?)\b')
         res = reg.findall(text)
         for phrase in res:
-            results.append(('gender_women',phrase))
+            results.append(('women',phrase))
 
         # nonbinary pronouns
         reg = re.compile(r'\b(?:he|him|his|she|hers?|they|them|their)\s?(?:/|\s)?\s?(?:they|them|theirs?)\b')
         res = reg.findall(text)
         for phrase in res:
-            results.append(('gender_nonbinary',phrase))
-
-        ## step 2: for substring level
-        
-        # # generate regular expressions
-        # reg_male = re.compile(r'\b(?:(?:grand?)?(?:father|dad|husband|son|brother)(?: of| to| and|$)|male\b)')
-        # reg_female = re.compile(r'\b(?:(?:grand?)?(?:mother|mom|mum|wife|daughter|sister)(?: of| to| and|$)|female\b)')
-        # reg_men=re.compile(r'\b(?:man|boy|guy|dude)\b')
-        # reg_women=re.compile(r'\b(?:girl|woman|gal)\b')
-        # reg_nb_sexual = re.compile(r'\b(?:bi(?:(?:-|\s)?sexual)|(?:a|pan|homo)-?sexual|gay|lesbian|queer|lgbt?\b)')
-        # reg_nb_gender = re.compile(r'\b(?:nb|non(?:\s|-)?binary|trans(?:gender|male|female)?|enby|queer|lgbt?\b)')
-        
-        # words = self.split_description_to_substrings(text)
-        # # search each word while removing exceptions
-        # for word in words:
-        #     res = reg_male.findall(word)
-        #     for phrase in res:
-        #         if re.findall(r'(?:son of a bitch|suga|my( \w+)? \b(?:grand?)?(?:father|dad|daddy|husband|son|male))',word):
-        #             continue
-        #         else:
-        #             results.append(('sexuality_male',phrase))
-
-        #     res = reg_female.findall(word)
-        #     for phrase in res:
-        #         if re.findall(r'(?:suga|my( \w+)? \b(?:grand?)?(?:mother|mom|mommy|mum|wife|daughter|sister|female))',word):
-        #             continue
-        #         else:
-        #             results.append(('sexuality_female',phrase))
-
-        #     res = reg_men.findall(word)
-        #     for phrase in res:
-        #         if re.findall(r'((of|my|oh|any|hey|to)( \w+){0,2} (man|boy|guy|dude)\b|man u(nited|td)?\b|boy with luv)',word):
-        #             continue
-        #         elif re.findall(r'(mom|mother|mum|wife\w?|daughter|sister) (of|to)',word):
-        #             continue
-        #         else:
-        #             results.append(('gender_men',phrase))
-
-        #     res = reg_women.findall(word)
-        #     for phrase in res:
-        #         if re.findall(r'(of|my|oh|any|hey|to)( \w+){0,2} (girl|woman|gal)\b',word):
-        #             continue
-        #         elif re.findall(r'(husband|dad(dy)?|father|son|brother) (of|to)',word):
-        #             continue
-        #         else:
-        #             results.append(('gender_women',phrase))
-
-        #     res = reg_nb_sexual.findall(word)
-        #     for phrase in res:
-        #         if re.findall(r'(bi(\s|-)?(vocation|ling|cycl|weekly|annual|monthly)|\brights\b)',word):
-        #             continue
-        #         else:
-        #             results.append(('sexuality_nonbinary',phrase))
-
-        #     res = reg_nb_gender.findall(word)
-        #     for phrase in res:
-        #         if re.findall(r'(bi(\s|-)?(vocation|ling|cycl|weekly|annual|monthly)|\brights\b)', word):
-        #             continue
-        #         else:
-        #             results.append(('gender_nonbinary', phrase))
+            results.append(('nonbinary',phrase))
 
         if results:
             cat2phrases={}
@@ -161,7 +102,7 @@ class IdentityExtactor:
                 cat2phrases[cat].append(phrase)
             for cat,V in cat2phrases.items():
                 cat2phrases[cat]=','.join(list(set(V)))
-            return '|'.join([cat+':'+V for cat,V in cat2phrases.items()])
+            return '|'.join(['gender_'+cat+':'+V for cat,V in cat2phrases.items()])
         else:
             return
 
@@ -306,7 +247,7 @@ class IdentityExtactor:
 
         for reg,subcategory in zip(
             [re_cat,re_mus,re_hin,re_ath,re_gen],
-            ['religion_cath/christ','religion_islam','religion_hinduism','religion_atheism','religion_general']):
+            ['cath/christ','islam','hinduism','atheism','general']):
             res = reg.findall(text)
             if res:
                 flag=False
@@ -320,7 +261,7 @@ class IdentityExtactor:
             out=[]
             for subcategory,V in results:
                 V=list(set(V))
-                out.append(f'{subcategory}:%s'%','.join(V))
+                out.append(f'religion_{subcategory}:%s'%','.join(V))
             return '|'.join(out)
         else:
             return
@@ -353,7 +294,7 @@ class IdentityExtactor:
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
             for subcategory,reg in zip(
-                ['relationship_parent','relationship_partner','relationship_sibling'],
+                ['parent','partner','sibling'],
                 [reg_parent,reg_partner,reg_sibling]
             ):
                 res=reg.findall(substring)
@@ -370,37 +311,24 @@ class IdentityExtactor:
             out=[]
             for subcategory,V in results:
                 V=list(set(V))
-                out.append(f'{subcategory}:%s'%','.join(V))
+                out.append(f'relationship_{subcategory}:%s'%','.join(V))
             return '|'.join(out)
         else:
             return
-    
-    
 
     def extract_education(self, text):
         text=text.lower()
         results = []
 
         reg = re.compile(
-                r'\b(ph(?:\.)?d|post(?:-|\s)?doc|mba|student|univ(?:ersity)|college|grad(?:uate)?|college|(?:freshman|sophomore|junior|senior) at|class of|school|study(?:ing)?|\
-                studie(?:s|d)|alum(?:\w+)?)\b'
+                r'\b(ph(?:\.)?d|mba|student|univ(?:ersity)|college|grad(?:uate)?|(?:freshman|sophomore|junior|senior) at|class of|school|study(?:ing)?|\
+                studie(?:s|d)|alum(?:$|na|nus|ni)\b'
             )
 
         re_exclude_list = [
-            re.compile(r'\b(teach(?:er|ing)?|lecturer|coach(?:ing)?|prof(?:essor)?|principal|aspiring|future)'),
+            re.compile(r'\b(teach(?:er|ing)?|lecturer|post(?:-|\s)?doc|coach(?:ing)?|prof(?:essor)?|principal|aspiring|future)'),
             re.compile(r'student of life')
         ]
-
-        # for reg in re_list:
-        #     res = reg.findall(text)
-        #     if res:
-        #         flag=False
-        #         for reg in re_exclude_list:
-        #             if reg.search(text):
-        #                 flag=True
-        #                 break
-        #         if flag==False:
-        #             results.extend(res)
 
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
@@ -415,7 +343,7 @@ class IdentityExtactor:
                     results.extend(res)
         if results:
             results = list(set(results))
-            return 'education:%s'%'|'.join([x.strip() for x in results])
+            return 'education_student:%s'%','.join([x.strip() for x in results])
         else:
             return
 
@@ -435,13 +363,13 @@ class IdentityExtactor:
             reg_business = re.compile(r'(?:accountant|trader|investor|banker|analyst|ceo|executive officer|entrepreneur|financial advisor|marketer)\b')
             res = reg_business.findall(substring)
             if res:
-                results.append(('occupation_business',','.join(res)))
+                results.append(('business',','.join(res)))
 
             # influencer
             reg_influencer = re.compile(r'(?:streamer|youtuber|podcaster|influencer|(?:twitch|discord) partner)')
             res = reg_influencer.findall(substring)
             if res:
-                results.append(('occupation_influencer',','.join(res)))
+                results.append(('influencer',','.join(res)))
 
             # healthcare
             reg_healthcare = re.compile(r'(?:dentist|doctor|nurse|physician|pharmacist|therapist|counselor|psychiatrist|dermatologist|veterinarian)\b')
@@ -453,46 +381,46 @@ class IdentityExtactor:
                         if re.findall(r'(doctor strange|doctor who)',text):
                             continue
                     res2.append(phrase)
-                results.append(('occupation_healthcare',','.join(res2)))
+                results.append(('healthcare',','.join(res2)))
 
             # academia
             reg_academia = re.compile(r'\b(?:(?:\w+)?scientist|teacher|researcher|research assistant|scholar|educator|instructor|lecturer|prof|professor)\b')
             res=reg_academia.findall(substring)
             if res:
-                results.append(('occupation_academia',','.join(res)))
+                results.append(('academia',','.join(res)))
 
             # art-related
             reg_art = re.compile(r'\b(?:artist|animator|creator|dancer|designer|dj|filmmaker|illustrator|musician|photographer|producer|rapper|singer|songwriter)\b')
             res=reg_art.findall(substring)
             if res:
-                results.append(('occupation_art',','.join(res)))
+                results.append(('art',','.join(res)))
 
             # tech
             reg_art = re.compile(r'\b(?:engineer|architect|programmer|developer|technician)\b')
             res=reg_art.findall(substring)
             if res:
-                results.append(('occupation_tech',','.join(res)))
+                results.append(('tech',','.join(res)))
 
             # news & legal
             reg_news = re.compile(r'\b(?:journalist|reporter|correspondent|attorney|lawyer|spokesperson|paralegal)\b')
             res=reg_news.findall(substring)
             if res:
-                results.append(('occupation_news',','.join(res)))
+                results.append(('news',','.join(res)))
 
             # services
             reg_services = re.compile(r'\b(?:coach|attendant|colonel|lieutenant|sergeant|police officer|trainer|(?:hair)?stylist|clerk|tutor|public servant|barber|cosmetologist|(?:\w+care|social|service) (?:worker|professional))\b')
             res=reg_services.findall(substring)
             if res:
-                results.append(('occupation_services',','.join(res)))
+                results.append(('services',','.join(res)))
 
             # writing
             reg_writing = re.compile(r'\b(?:writer|blogger|editor|author|poet|publisher|playwright)\b')
             res=reg_writing.findall(substring)
             if res:
-                results.append(('occupation_writing',','.join(res)))
+                results.append(('writing',','.join(res)))
 
         if results:
-            return '|'.join([cat+':'+V for cat,V in results])
+            return '|'.join(['occupation_'+cat+':'+V for cat,V in results])
         else:
             return
 
@@ -519,17 +447,17 @@ class IdentityExtactor:
                 for phrase in res:
                     res_negate=reg_negate.findall(substring)
                     if res_negate:
-                        results.append(('political_anticonservative','_'.join(res_negate)+'_'+phrase))
+                        results.append(('anticonservative','_'.join(res_negate)+'_'+phrase))
                     else:
-                        results.append(('political_conservative',phrase))
+                        results.append(('conservative',phrase))
             for reg in reg_lib_list:
                 res=reg.findall(substring)
                 for phrase in res:
                     res_negate=reg_negate.findall(substring)
                     if res_negate:
-                        results.append(('political_antiliberal','_'.join(res_negate)+'_'+phrase))
+                        results.append(('antiliberal','_'.join(res_negate)+'_'+phrase))
                     else:
-                        results.append(('political_liberal',phrase))
+                        results.append(('liberal',phrase))
 
             reg_blm_list=[
                 re.compile(r'(?:black\s?lives\s?matter|blm)')
@@ -537,7 +465,7 @@ class IdentityExtactor:
             for reg in reg_blm_list:
                 res=reg.findall(substring)
                 for phrase in res:
-                    results.append(('political_blm',phrase))
+                    results.append(('blm',phrase))
 
         if results:
             cat2phrases={}
@@ -547,7 +475,7 @@ class IdentityExtactor:
                 cat2phrases[cat].append(phrase)
             for cat,V in cat2phrases.items():
                 cat2phrases[cat]=','.join(list(set(V)))
-            return '|'.join([cat+':'+V for cat,V in cat2phrases.items()])
+            return '|'.join(['political_'+cat+':'+V for cat,V in cat2phrases.items()])
         else:
             return
 
@@ -567,7 +495,7 @@ class IdentityExtactor:
 
         if results:
             results = list(set(results))
-            return 'socialmedia:'+'|'.join([x.strip() for x in results])
+            return 'personal_socialmedia:'+','.join([x.strip() for x in results])
         else:
             return
 
@@ -597,7 +525,7 @@ class IdentityExtactor:
 
         if results:
             results = list(set(results))
-            return 'sensitive:'+'|'.join([x.strip() for x in results])
+            return 'personal_sensitive:'+','.join([x.strip() for x in results])
         else:
             return
         
