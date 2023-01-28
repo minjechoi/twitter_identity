@@ -185,7 +185,7 @@ class IdentityExtactor:
         
         re_list = [
             re.compile(
-                r'\b(african|asian|hispanic|latin(?:a|o|x))'
+                r'\b(african|asian|hispanic|latin)'
                 # r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
             ),
             # re.compile(
@@ -222,7 +222,7 @@ class IdentityExtactor:
                     results.extend(res)
         if results:
             results = list(set(results))
-            return '|'.join([x.strip() for x in results])
+            return '|'.join(['ethnicity:'+x.strip() for x in results])
         else:
             return
 
