@@ -672,7 +672,8 @@ def run_multiprocessing(input_dir, output_dir, modulo:int=None):
             output_file = join(output_dir,file+'_'+identity)
             inputs.append((input_file,output_file,[identity]))
 
-    inputs = [x for i,x in enumerate(inputs) if i%7==modulo]
+    if modulo:
+        inputs = [x for i,x in enumerate(inputs) if i%7==modulo]
 
     pool = Pool(32)
     pool.starmap(extract_identities_from_file, inputs)
