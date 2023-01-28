@@ -9,12 +9,12 @@ from multiprocessing import Pool
 from collections import Counter
 import gzip
 
-import emoji
+# import emoji
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from twitter_identity.utils.utils import get_weekly_bins,write_data_file_info
+# from twitter_identity.utils.utils import get_weekly_bins,write_data_file_info
 
 ALL_IDENTITIES = [
     'gender', 'age', 'ethnicity', 'religion',
@@ -29,7 +29,7 @@ def get_emoji_regexp():
     return re.compile(pattern)
 
 class IdentityExtactor:    
-    def __init__(self, include_emojis=True):
+    def __init__(self, include_emojis=False):
         self.include_emojis=include_emojis
         self.identity2extractor = {
             'gender':self.extract_gender,
@@ -602,7 +602,7 @@ class IdentityExtactor:
             return
         
 
-def test_individual_extraction(text,identity='age'):
+def test_individual_extraction(text,identity='gender'):
     IdEx = IdentityExtactor()
     return IdEx.identity2extractor[identity](text)
 
@@ -626,62 +626,42 @@ def extract_identities_from_file(
     # create object
     IdEx = IdentityExtactor()
     
-    # load input data into class
+    # run each line
     if input_file.endswith('.gz'):
         f=gzip.open(input_file,'rt')
     else:
         f=open(input_file,'r')
-        
-    for ln,_ in enumerate(f):
-        continue
-    
-    f.close()
-     
-    # load inputs into list   
-    inputs = []
-    if input_file.endswith('.gz'):
-        f=gzip.open(input_file,'rt')
-    else:
-        f=open(input_file,'r')
-        
-    for i,line in enumerate(tqdm(f,total=ln)):
-        if i==0:
-            continue
-        if i>1000:
-            break
+    outf = open(output_file,'w')
+
+    cnt = 0
+    for ln,line in enumerate(f):
         line=line.split('\t')
         uid,ts,description = line[:3]
-        # uid,ts,description,_=line.split('\t')
-        ts=float(ts)
-        description = description.strip()
-        inputs.append((uid,ts,description))
-    f.close()
-    print("Input data loaded!")
-    
-    # extract identities from input list
-    outputs = []
-    for uid,ts,desc in tqdm(inputs):     
+
         obj = {}
+        # run identity extraction
         for identity in identities:
             extractor = IdEx.identity2extractor[identity]
-            res = extractor(desc.lower())
+            res = extractor(description.lower())
             if res:
                 obj[identity] = res
-        outputs.append((uid,ts,obj))
+            
+        # save results
+        line_out = []
+        for identity,v in obj.items():
+            line_out.append(v)
+        line = f'{uid}\t{ts}\t%s\n'%'|'.join(line_out)
+        outf.write(line)
+        if len(obj):
+            cnt+=1
 
-    # Write to output file
-    with open(output_file,'w') as outf:
-        for uid,ts,obj in tqdm(outputs):
-            out = []
-            for identity,v in obj.items():
-                out.append(v)
-            line = f'{uid}\t{ts}\t%s\n'%'|'.join(out)
-            outf.write(line)
-    print(f'Saved to {output_file}!')    
+    f.close()
+     
+    print(f'Saved to {output_file} {cnt}/{ln}!')    
     # write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
     return
 
-def run_multiprocessing(input_dir, output_dir, modulo:str=None):
+def run_multiprocessing(input_dir, output_dir, modulo:int=None):
     from multiprocessing import Pool
     
     inputs = []
@@ -692,7 +672,7 @@ def run_multiprocessing(input_dir, output_dir, modulo:str=None):
             output_file = join(output_dir,file+'_'+identity)
             inputs.append((input_file,output_file,[identity]))
 
-    inputs = [x for i,x in enumerate(inputs) if i%10==modulo]
+    inputs = [x for i,x in enumerate(inputs) if i%7==modulo]
 
     pool = Pool(32)
     pool.starmap(extract_identities_from_file, inputs)
@@ -711,7 +691,7 @@ def run_multiprocessing(input_dir, output_dir, modulo:str=None):
 if __name__=='__main__':
     # test 
     # text='23yr | he/him | cancer'
-    # res=test_individual_extraction(text,'age')
+    # res=test_individual_extraction(text,'gender')
     # print(res)
 
     # input_file = '/shared/3/projects/bio-change/data/interim/description_changes/splitted/0_changes_aa'
