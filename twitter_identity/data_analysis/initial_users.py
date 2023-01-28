@@ -74,11 +74,32 @@ def get_language_of_users(user_file):
     print(cn.most_common())
     return cn
     
+def count_identities_of_zero_change_users(user_file):
+    D=[]
+    with gzip.open(user_file,'rt') as f:
+        for ln,line in enumerate(f):
+            line=line.strip().split('\t')
+            identities = line[2:]
+            S = set()
+            for id in identities:
+                for id2 in id.split('|'):
+                    S.add(id2.split(':')[0])
+            D.extend(list(S))
+    cn = Counter(D)
+    for k in sorted(cn.keys()):
+        dn = round(cn[k]/len(D),3)
+        print(f'{k}:{cn[k]}/{ln} ({dn})')
+    return
+
 if __name__=='__main__':
     # get_users_joined_in_range(
     #     user_file='/shared/3/projects/bio-change/data/processed/user_profile-2020.04.json.gz',
     #     start_date='2020 April 1st', end_date='2020 April 30th')
     
-    get_language_of_users(
-    user_file='/shared/3/projects/bio-change/data/processed/user_profile-2020.04.json.gz'
+    # get_language_of_users(
+    # user_file='/shared/3/projects/bio-change/data/processed/user_profile-2020.04.json.gz'
+    # )
+
+    count_identities_of_zero_change_users(
+        user_file='/shared/3/projects/bio-change/data/interim/description_changes/extracted/description_changes.0_changes.all_identities.json.gz'
     )
