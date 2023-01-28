@@ -5,9 +5,15 @@ Contains instructions of where each dataset is stored, and what the stored data 
 ├── data                        <- Project data
 │   ├── external                    <- Data from third party sources.
 │   ├── interim                     <- Intermediate data that has been transformed.
-│   │   ├── identity_by_week            <- Directory containing the displayed identity subcategories for users that had at least one identity shown (4,732,035)
-│   │   ├── identity_classifier-train_data  <- Directory used for creating the training datasets for the identity classifier
-│   │   └── all_uids                        <- Contains data of all user ids that were used in the initial 15M sample of users active during both 2020.04 and 2021.04
+│   │   ├── all_uids                        <- Contains data of all user ids that were used in the initial 15M sample of users active during both 2020.04 and 2021.04
+│   │   ├── description_changes             <- Directory containing the changes made to filter down description changes and get extracted identities
+│   │   │   ├── remove-heavy-users          <- Removed users who were in top-5 percentile for either number of followers, posts, or had verified status
+│   │   │   ├── remove-non-english          <- Removed users whose language in profile contained non-english
+│   │   │   ├── filtered                    <- Filtered version where all users to remove were removed
+│   │   │   └── extracted                   <- Contains results obtained after running identity extraction algorithms
+│   │   │
+│   │   ├── identity_by_week                <- Directory containing the displayed identity subcategories for users that had at least one identity shown (4,732,035)
+│   │   └── identity_classifier-train_data  <- Directory used for creating the training datasets for the identity classifier
 │   │
 │   ├── processed                   <- The final, canonical data sets for modeling or data analysis.
 │   │   └── identity_classifier-train_data  <- Directory containing the training datasets for the identity classifier
