@@ -10,11 +10,11 @@ Contains instructions of where each dataset is stored, and what the stored data 
 │   │   └── all_uids                        <- Contains data of all user ids that were used in the initial 15M sample of users active during both 2020.04 and 2021.04
 │   │
 │   ├── processed                   <- The final, canonical data sets for modeling or data analysis.
-│   │   ├── user_info
-│   │   │   └── user_profile-2020.04.json.gz    <- File containing the user info of all 8.9M/9.1M users tracked initially, can be used for matching 
 │   │   └── identity_classifier-train_data  <- Directory containing the training datasets for the identity classifier
 │   │
 │   └── raw                         <- The original, immutable data dump.
+│       ├── user_info
+│       │   └── user_profile-2020.04.json.gz    <- File containing the user info of all 8.9M/9.1M users tracked initially, can be used for matching 
 │       └── description_changes        <- Directory containing profile updates of 15M users who were active in 2020/4/1 and 2021/4/1
 │           ├── description_changes_0_changes.tsv.gz        <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
 │           └── description_changes_1plus_changes.tsv.gz    <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
