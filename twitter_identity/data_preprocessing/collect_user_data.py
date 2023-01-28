@@ -112,6 +112,47 @@ def remove_heavy_users(input_dir,output_dir,user_info_file):
                     outf.write(line)
         print(f'Finished saving {file}')
         write_data_file_info(__file__,remove_heavy_users.__name__,join(output_dir,file),[join(input_dir,file),user_info_file])
+    return
+
+def filter_valid_users(input_dir,filter_dirs,output_dir):
+    
+    # get valid users obtained after filtering
+    valid_users = set()
+    for i,filter_dir in enumerate(filter_dirs):
+        S=set()
+        for file in sorted(os.listdir(filter_dir)):
+            with gzip.open(join(filter_dir,file),'rt') as f:
+                for ln,line in enumerate(f):
+                    if ln==0:
+                        continue
+                    uid=line.split('\t')[0]
+                    S.add(uid)
+        
+        if i==0:
+            valid_users = S
+        else:
+            valid_users = valid_users & S
+            
+        print(f'Collected {len(valid_users)} users to preserve!')
+    
+    # save filtered users
+    for file in sorted(os.listdir(input_dir)):
+        
+        with gzip.open(join(input_dir,file),'rt') as f:
+            for ln,line in enumerate(f):
+                continue
+                            
+        with gzip.open(join(input_dir,file),'rt') as f,\
+            gzip.open(join(output_dir,file),'wt') as outf:
+            for ln,line in enumerate(tqdm(f,total=ln)):
+                if ln==0:
+                    continue
+                uid=line.split('\t')[0]
+                if uid in valid_users:
+                    outf.write(line)
+        print(f'Finished saving {file}')
+        write_data_file_info(__file__,filter_valid_users.__name__,join(output_dir,file),[join(input_dir,file)]+filter_dirs)
+    return
 
             
 
@@ -130,8 +171,16 @@ if __name__=='__main__':
     # remove_non_english_users(input_dir,output_dir)
     
     # remove heavy users
-    input_dir='/shared/3/projects/bio-change/data/raw/description_changes'
-    output_dir='/shared/3/projects/bio-change/data/interim/description_changes/remove-heavy-users'
-    user_info_file='/shared/3/projects/bio-change/data/raw/user_info/user_profile-2020.04.json.gz'
-    remove_heavy_users(input_dir,output_dir,user_info_file)
+    # input_dir='/shared/3/projects/bio-change/data/raw/description_changes'
+    # output_dir='/shared/3/projects/bio-change/data/interim/description_changes/remove-heavy-users'
+    # user_info_file='/shared/3/projects/bio-change/data/raw/user_info/user_profile-2020.04.json.gz'
+    # remove_heavy_users(input_dir,output_dir,user_info_file)
     
+    # filter users
+    input_dir='/shared/3/projects/bio-change/data/raw/description_changes'
+    output_dir='/shared/3/projects/bio-change/data/interim/description_changes/filtered'
+    filter_dirs = [
+        '/shared/3/projects/bio-change/data/interim/description_changes/remove-non-english',
+        '/shared/3/projects/bio-change/data/interim/description_changes/remove-heavy-users'
+    ]
+    filter_valid_users(input_dir,filter_dirs,output_dir)
