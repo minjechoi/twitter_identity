@@ -1,6 +1,7 @@
 import os
 from os.path import join
 import gzip
+from random import sample
 
 from multiprocessing import Pool
 from datetime import datetime
@@ -154,7 +155,36 @@ def filter_valid_users(input_dir,filter_dirs,output_dir):
         write_data_file_info(__file__,filter_valid_users.__name__,join(output_dir,file),[join(input_dir,file)]+filter_dirs)
     return
 
-            
+def identify_identity_positive_and_negative_users(user_file,save_dir,max_users=100000):
+    """Function that saves a list of identity positive- and negative- users with zero changes in their profiles - to be used for creating training datasets
+    Args:
+        load_dir (_type_): _description_
+        save_dir (_type_): _description_
+    """
+    all_uids = set()
+    identity2uids = {}
+    with gzip.open(user_file,'rt') as f:
+        for ln,line in enumerate(f):
+            line=line.strip().split('\t')
+            uid = line[0]
+            identities = line[2:]
+            all_uids.add(uid)
+            for id in identities:
+                id = id.split(':')
+                if id not in identity2uids:
+                    identity2uids[id]=set()
+                identity2uids[id].add(uid)
+    
+    # for each identity, create positive and negative sets
+    for id,S1 in identity2uids.items():            
+        S2 = all_uids-S1 # negative set of users
+    
+    cn = Counter(D)
+    for k in sorted(cn.keys()):
+        dn = round(cn[k]/len(D),3)
+        print(f'{k}:{cn[k]}/{ln} ({dn})')
+    return
+
 
 if __name__=='__main__':
     # get all uids from description files
