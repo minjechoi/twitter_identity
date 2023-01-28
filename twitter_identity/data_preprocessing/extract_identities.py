@@ -1,7 +1,7 @@
 """
 The code for extracting identities from a given set of tweets
 """
-
+import argparse
 import os
 from os.path import join
 import re
@@ -428,84 +428,71 @@ class IdentityExtactor:
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
             # remove false phrases
-            if re.findall(r'(future|\baspir|\bex(-|\s)|former|)',substring):
+            if re.findall(r'(future|\baspir|\bex(-|\s)|former)',substring):
                 continue
             
             # business-related
-            reg_business = re.compile(r'(?:accountant|trader|investor|banker|analyst|ceo|executive officer|financial advisor|marketer)\b')
+            reg_business = re.compile(r'(?:accountant|trader|investor|banker|analyst|ceo|executive officer|entrepreneur|financial advisor|marketer)\b')
             res = reg_business.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_business', phrase))
+                results.append(('occupation_business',','.join(res)))
 
             # influencer
             reg_influencer = re.compile(r'(?:streamer|youtuber|podcaster|influencer|(?:twitch|discord) partner)')
             res = reg_influencer.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_influencer', phrase))
+                results.append(('occupation_influencer',','.join(res)))
 
             # healthcare
             reg_healthcare = re.compile(r'(?:dentist|doctor|nurse|physician|pharmacist|therapist|counselor|psychiatrist|dermatologist|veterinarian)\b')
             res=reg_healthcare.findall(substring)
             if res:
+                res2=[]
                 for phrase in res:
                     if phrase=='doctor':
                         if re.findall(r'(doctor strange|doctor who)',text):
                             continue
-                    results.append(('occupation_healthcare',phrase))
+                    res2.append(phrase)
+                results.append(('occupation_healthcare',','.join(res2)))
 
             # academia
             reg_academia = re.compile(r'\b(?:(?:\w+)?scientist|teacher|researcher|research assistant|scholar|educator|instructor|lecturer|prof|professor)\b')
             res=reg_academia.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_academia',phrase))
+                results.append(('occupation_academia',','.join(res)))
 
             # art-related
             reg_art = re.compile(r'\b(?:artist|animator|creator|dancer|designer|dj|filmmaker|illustrator|musician|photographer|producer|rapper|singer|songwriter)\b')
             res=reg_art.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_art',phrase))
+                results.append(('occupation_art',','.join(res)))
 
             # tech
             reg_art = re.compile(r'\b(?:engineer|architect|programmer|developer|technician)\b')
             res=reg_art.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_tech',phrase))
+                results.append(('occupation_tech',','.join(res)))
 
             # news & legal
             reg_news = re.compile(r'\b(?:journalist|reporter|correspondent|attorney|lawyer|spokesperson|paralegal)\b')
             res=reg_news.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_news',phrase))
+                results.append(('occupation_news',','.join(res)))
 
             # services
             reg_services = re.compile(r'\b(?:coach|attendant|colonel|lieutenant|sergeant|police officer|trainer|(?:hair)?stylist|clerk|tutor|public servant|barber|cosmetologist|(?:\w+care|social|service) (?:worker|professional))\b')
             res=reg_services.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_services',phrase))
+                results.append(('occupation_services',','.join(res)))
 
             # writing
             reg_writing = re.compile(r'\b(?:writer|blogger|editor|author|poet|publisher|playwright)\b')
             res=reg_writing.findall(substring)
             if res:
-                for phrase in res:
-                    results.append(('occupation_writing',phrase))
+                results.append(('occupation_writing',','.join(res)))
 
         if results:
-            cat2phrases={}
-            for cat,phrase in results:
-                if cat not in cat2phrases:
-                    cat2phrases[cat]=[]
-                cat2phrases[cat].append(phrase)
-            for cat,V in cat2phrases.items():
-                cat2phrases[cat]=','.join(list(set(V)))
-            return '|'.join([cat+':'+V for cat,V in cat2phrases.items()])
+            return '|'.join([cat+':'+V for cat,V in results])
         else:
             return
 
@@ -630,6 +617,11 @@ def extract_identities_from_file(
         output_file (str): directory of output file
         identities (list): list of identities (str) to include
     """
+    print(f"""
+    input: {input_file}
+    output: {output_file}
+    identity: {identities[0]}
+    """)
     
     # create object
     IdEx = IdentityExtactor()
@@ -678,7 +670,7 @@ def extract_identities_from_file(
         outputs.append((uid,ts,obj))
 
     # Write to output file
-    with gzip.open(output_file,'wt') as outf:
+    with open(output_file,'w') as outf:
         for uid,ts,obj in tqdm(outputs):
             out = []
             for identity,v in obj.items():
@@ -686,10 +678,27 @@ def extract_identities_from_file(
             line = f'{uid}\t{ts}\t%s\n'%'|'.join(out)
             outf.write(line)
     print(f'Saved to {output_file}!')    
-    write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
+    # write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
     return
 
+def run_multiprocessing(input_dir, output_dir, modulo:str=None):
+    from multiprocessing import Pool
     
+    inputs = []
+    all_files=sorted(os.listdir(input_dir))
+    for file in all_files:
+        input_file = join(input_dir,file)
+        for identity in ALL_IDENTITIES:
+            output_file = join(output_dir,file+'_'+identity)
+            inputs.append((input_file,output_file,[identity]))
+
+    inputs = [x for i,x in enumerate(inputs) if i%10==modulo]
+
+    pool = Pool(32)
+    pool.starmap(extract_identities_from_file, inputs)
+    return
+
+
             
 
 
@@ -705,9 +714,17 @@ if __name__=='__main__':
     # res=test_individual_extraction(text,'age')
     # print(res)
 
-    input_file = '/shared/3/projects/bio-change/data/interim/description_changes/splitted/0_changes_aa'
-    output_file = '/shared/3/projects/bio-change/data/interim/description_changes/test.json.gz'
-    extract_identities_from_file(
-        input_file,
-        output_file,
-        identities=['religion'])
+    # input_file = '/shared/3/projects/bio-change/data/interim/description_changes/splitted/0_changes_aa'
+    # output_file = '/shared/3/projects/bio-change/data/interim/description_changes/test.json.gz'
+    # extract_identities_from_file(
+    #     input_file,
+    #     output_file,
+    #     identities=['religion'])
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_dir', default='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/splitted-data')
+    parser.add_argument('--output_dir', default='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/splitted-results')
+    parser.add_argument('--modulo', type=int, default=None)
+    args = parser.parse_args()
+
+    run_multiprocessing(args.input_dir, args.output_dir, args.modulo)
