@@ -19,7 +19,7 @@ from tqdm import tqdm
 ALL_IDENTITIES = [
     'gender', 'age', 'ethnicity', 'religion',
     'relationship', 'education', 'occupation', 'political',
-    'social_media', 'sensitive']
+    'socialmedia', 'sensitive']
 
 def get_emoji_regexp():
     # Sort emoji by length to make sure multi-character emojis are
@@ -34,13 +34,13 @@ class IdentityExtactor:
         self.identity2extractor = {
             'gender':self.extract_gender,
             'age':self.extract_age,
-            # 'ethnicity':self.extract_ethnicity,
+            'ethnicity':self.extract_ethnicity,
             'religion':self.extract_religion,
             'relationship':self.extract_relationship,
             'education':self.extract_education,
             'occupation':self.extract_occupation,
             'political':self.extract_political,
-            'social_media':self.extract_social_media,
+            'socialmedia':self.extract_social_media,
             'sensitive':self.extract_sensitive_personal
         }
         
@@ -185,18 +185,17 @@ class IdentityExtactor:
         
         re_list = [
             re.compile(
-                r'\b(african|asian|hispanic|latin(?:a|o))'
+                r'\b(african|asian|hispanic|latin(?:a|o|x))'
                 # r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
             ),
             # re.compile(
             #     r'\b(🇺🇸|🇬🇧|🇨🇦|🇮🇪|🇧🇷|🇲🇽|󠁧󠁢󠁧🇯🇵|🇪🇸|🇮🇹|🇫🇷|🇩🇪|🇳🇱|🇮🇳|🇮🇩|🇹🇷|🇸🇦|🇹🇭|🇵🇭|🇦🇷|🇰🇷|🇪🇬|🇲🇾|🇨🇴)',
             # )
         ]
+        reg = re_list[0]
         
-        reg = re.compile(r'\b(african|asian|hispanic|latin(?:a|o))')
         re_exclude_list = [
-            re.compile(r'(learn|stud(?:y|ie)|language|lingual|speak|food|dish|cuisine|culture|music|drama|tv|movie)'),
-            re.compile(r'\b(asian|black)\s?hate')
+            re.compile(r'(hate|against|support|learn|stud(?:y|ie)|language|lingual|speak|food|dish|cuisine|culture|music|drama|tv|movie)'),
         ]
         # for reg in re_list:
         #     res = reg.findall(text)
