@@ -25,6 +25,6 @@ echo "***** Spark cluster is running. Access the Web UI at ${SPARK_MASTER_WEBUI}
 # with an allowance for spark driver overhead.
 # Change the path to your spark job.
 
-# python3 collect_tweets_greatlakes.py
-python3 extract_identities.py
+python3 collect_tweets_greatlakes.py $1
+# python3 extract_identities.py
 echo "*** Job completed! ***"
