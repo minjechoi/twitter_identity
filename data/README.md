@@ -20,7 +20,11 @@ Contains instructions of where each dataset is stored, and what the stored data 
 │   │
 │   └── raw                         <- The original, immutable data dump.
 │       ├── user_info
-│       │   └── user_profile-2020.04.json.gz    <- File containing the user info of all 8.9M/9.1M users tracked initially, can be used for matching 
+│       │   └── user_profile-2020.04.json.gz    <- File containing the user info of all 8.9M/9.1M users tracked initially, can be used for matching
+│       │
+│       ├── identity_classifier-train_data      <- Directory containing the raw tweets obtained from the 3-month (2020.04-06) activities of users mapped to pos/neg samples
+│       │                                       <- from interim/identity_classifier-train_data
+│       │
 │       └── description_changes        <- Directory containing profile updates of 15M users who were active in 2020/4/1 and 2021/4/1
 │           ├── description_changes_0_changes.tsv.gz        <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
 │           └── description_changes_1plus_changes.tsv.gz    <- Data containing all unique profiles of 9,142,850 users from 2020/4/1 to 2021/5/1
