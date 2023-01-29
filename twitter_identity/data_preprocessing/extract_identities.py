@@ -222,7 +222,7 @@ class IdentityExtactor:
                     results.extend(res)
         if results:
             results = list(set(results))
-            return '|'.join(['ethnicity:'+x.strip() for x in results])
+            return '|'.join([f'ethnicity_{x}:'+x.strip() for x in results])
         else:
             return
 
