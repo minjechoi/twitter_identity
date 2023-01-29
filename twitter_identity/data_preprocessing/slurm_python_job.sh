@@ -5,7 +5,7 @@
 
 #“#SBATCH” directives that convey submission options:
 
-#SBATCH --job-name=collect-users
+#SBATCH --job-name=twitter_identity
 #SBATCH --mail-user=minje@umich.edu
 #SBATCH --account=drom0
 #SBATCH --mail-type=BEGIN,END
@@ -24,5 +24,7 @@ echo "***** Spark cluster is running. Access the Web UI at ${SPARK_MASTER_WEBUI}
 # Change executor resources below to match resources requested above
 # with an allowance for spark driver overhead.
 # Change the path to your spark job.
-python3 collect_tweets_greatlakes.py 1
+
+# python3 collect_tweets_greatlakes.py
+python3 extract_identities.py
 echo "*** Job completed! ***"
