@@ -589,14 +589,14 @@ def extract_identities_from_file(
     # write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
     return
 
-def run_multiprocessing(input_dir, output_dir, modulo:int=None):
+def run_multiprocessing(input_dir, output_dir, identities=ALL_IDENTITIES, modulo:int=None):
     from multiprocessing import Pool
     
     inputs = []
     all_files=sorted(os.listdir(input_dir))
     for file in all_files:
         input_file = join(input_dir,file)
-        for identity in ALL_IDENTITIES:
+        for identity in identities:
             output_file = join(output_dir,file+'_'+identity)
             inputs.append((input_file,output_file,[identity]))
 
@@ -634,6 +634,13 @@ if __name__=='__main__':
     parser.add_argument('--input_dir', default='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/splitted-data')
     parser.add_argument('--output_dir', default='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/splitted-results')
     parser.add_argument('--modulo', type=int, default=None)
+    parser.add_argument('--identities', type=str, default=None)
     args = parser.parse_args()
 
-    run_multiprocessing(args.input_dir, args.output_dir, args.modulo)
+    if args.identities:
+        identities = args.identities.split(',')
+    else:
+        identities = ALL_IDENTITIES
+
+    # run_multiprocessing(args.input_dir, args.output_dir, identities, args.modulo)
+    run_multiprocessing(args.input_dir, args.output_dir, ['ethnicity'])
