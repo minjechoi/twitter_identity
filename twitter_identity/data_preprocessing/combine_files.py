@@ -24,7 +24,7 @@ def merge_splitted_extracted_identities(load_dir,save_dir):
         uid2profiles={}
         valid_files = [file for file in sorted(os.listdir(load_dir)) if n_changes in file]
         for file in tqdm(valid_files):
-            identity = 'socialmedia' if 'social_media' in file else file.split('_')[-1]
+            identity = file.split('_')[-1]
             with open(join(load_dir,file),'r') as f:
                 for line in f:
                     line=line.split('\t')
@@ -70,7 +70,7 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
             dictionary: contains the tweets for each user
         """
         uid2text = {}
-        for file in tqdm(sorted(os.listdir(load_dir))):
+        for file in tqdm(sorted(os.listdir(load_dir))[:5]):
             with gzip.open(join(load_dir,file),'rt') as f:
                 for line in f:
                     obj=json.loads(line)
@@ -79,7 +79,8 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
                         if obj['tweet_type'] in ['retweet','quote']:
                             uid = obj['user_id']
                             if uid in uids:
-                                if obj['lang_origin'] in ['en','und']:
+                                lang = obj['lang'] if obj['tweet_type']=='retweet' else obj['lang_origin']
+                                if lang in ['en','und']:
                                     text = obj['text'] if obj['tweet_type']=='retweet' else obj['text_origin'] # differs if it is a retweet or quote
                                     text = strip_tweet(text,url='replace')
                                     if uid not in uid2text:
@@ -99,7 +100,8 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
                         if obj['tweet_type'] in ['retweet','quote']:
                             uid = obj['user_id_origin']
                             if uid in uids:
-                                if obj['lang_origin'] in ['en','und']:
+                                lang = obj['lang'] if obj['tweet_type']=='retweet' else obj['lang_origin']
+                                if lang in ['en','und']:
                                     text = obj['text'] if obj['tweet_type']=='retweet' else obj['text_origin'] # differs if it is a retweet or quote
                                     text = strip_tweet(text,url='replace')
                                     if uid not in uid2text:
@@ -118,7 +120,7 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
     for tweet_type in tweet_types:
         for identity in identities:
             df2 = df[df.identity==identity]
-            uid2label = {uid:label for uid,label in df2.values}
+            uid2label = {uid:label for uid,_,label in df2.values}
             uids = set(df2['user_id'])
             # get all relevant tweets
             print(f'Loading all files and collecting tweets for {tweet_type} / {identity}')
@@ -135,12 +137,12 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
 
 if __name__=='__main__':
     # merge the identity files
-    # load_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/splitted'
-    # save_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/'
-    # merge_splitted_extracted_identities(load_dir, save_dir)
+    load_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/splitted'
+    save_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/'
+    merge_splitted_extracted_identities(load_dir, save_dir)
     
     # create training data out of the collected tweets
-    user_id_file = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/labels_200000.df.tsv'
-    load_dir = '/shared/3/projects/bio-change/data/raw/identity_classifier-train_data'
-    save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-tweets'
-    merge_training_sets(user_id_file, load_dir, save_dir)
+    # user_id_file = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/labels_200000.df.tsv'
+    # load_dir = '/shared/3/projects/bio-change/data/raw/identity_classifier-train_data'
+    # save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-tweets'
+    # merge_training_sets(user_id_file, load_dir, save_dir)
