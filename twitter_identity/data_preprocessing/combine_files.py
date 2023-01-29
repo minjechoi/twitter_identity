@@ -10,7 +10,7 @@ import pandas as pd
 import ujson as json
 from tqdm import tqdm
 
-from twitter_identity.utils.utils import write_data_file_info
+# from twitter_identity.utils.utils import write_data_file_info
 
 def merge_splitted_extracted_identities(load_dir,save_dir):
     """Merges the extracted identity shards
@@ -46,9 +46,14 @@ def merge_splitted_extracted_identities(load_dir,save_dir):
                     V = uid2profiles[uid][ts]
                     out_line = f'{uid}\t{ts}\t%s\n'%('\t'.join(V))
                     outf.write(out_line)
-        write_data_file_info(__file__, merge_splitted_extracted_identities.__name__, save_dir, [load_dir])
+        # write_data_file_info(__file__, merge_splitted_extracted_identities.__name__, save_dir, [load_dir])
                     
-    return                    
+    return
+
+def merge_training_sets(user_id_file, load_dir, save_dir):
+    """Loads all tweet files, and sorts them by each user, then by identity category
+    """
+    return
 
 if __name__=='__main__':
     load_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/splitted'
