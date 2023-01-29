@@ -170,19 +170,20 @@ def identify_identity_positive_and_negative_users(user_file,save_dir,max_users=1
             uid = line[0]
             identities = line[2:]
             all_uids.add(uid)
-            for id in identities:
-                id = id.split(':')[0]
-                if id not in identity2uids:
-                    identity2uids[id]=set()
-                identity2uids[id].add(uid)
+            for ids in identities:
+                for identity in ids.split('|'):
+                    id_ = identity.split(':')[0]
+                    if id_ not in identity2uids:
+                        identity2uids[id_]=set()
+                    identity2uids[id_].add(uid)
     
     # for each identity, create positive and negative sets
     out=[]
     
-    for id in sorted(identity2uids.keys()):
-        S1=identity2uids[id]
+    for id_ in sorted(identity2uids.keys()):
+        S1=identity2uids[id_]
         S2 = all_uids-S1 # negative set of users
-        print(id,len(S1),len(S2))
+        print(id_,len(S1),len(S2))
         
         S1 = list(S1)
         S2 = list(S2)
@@ -191,9 +192,9 @@ def identify_identity_positive_and_negative_users(user_file,save_dir,max_users=1
         neg_users = S2 if len(S2)<max_users else sample(S2,max_users)
         
         for uid in pos_users:
-            out.append((uid,id,1))
+            out.append((uid,id_,1))
         for uid in neg_users:
-            out.append((uid,id,0))
+            out.append((uid,id_,0))
         
     df = pd.DataFrame(out, columns=['user_id','identity','label'])
     df.to_csv(join(save_dir,f'labels_{max_users}.df.tsv'),sep='\t',index=False)
