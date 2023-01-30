@@ -130,6 +130,9 @@ class IdentityExtactor:
                 
         # remove 01/28 -like strings
         text = re.sub(r'[0-9]{1,4}(\/[0-9]{1,4}){1,}', '', text)
+        
+        # remove 40,000-like strings
+        text = re.sub(r'[0-9]{1,3}(,[0-9]{1,3}){1,}', '', text)
 
         ## step 2: for substring-level
         substrings = self.split_description_to_substrings(text)
