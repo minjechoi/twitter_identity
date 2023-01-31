@@ -23,7 +23,7 @@ def get_weekly_bins(timestamp):
     return diff.days / 7
 
 _STRIP_TYPES = Literal[None, 'replace', 'remove']
-def strip_tweet(text, url: _STRIP_TYPES='remove', username: _STRIP_TYPES='replace', hashtag: _STRIP_TYPES=None, non_ascii=True, lowercase=False):
+def strip_tweet(text, url: _STRIP_TYPES='remove', username: _STRIP_TYPES='replace', hashtag: _STRIP_TYPES=None, non_ascii=True, lowercase=False, remove_rt=True):
     """Function that strips certain parts from text
 
     Args:
@@ -60,6 +60,10 @@ def strip_tweet(text, url: _STRIP_TYPES='remove', username: _STRIP_TYPES='replac
     elif hashtag=='remove':
         text = ' '.join(re.sub(r'#\w+', '', text).strip().split()).strip()
     
+    # remove retweet prefix (RT @username:)
+    if remove_rt:
+        text = re.sub(r'(?:RT|rt) @\w+:', '', text).strip()
+        
     return text
 
 def write_data_file_info(script_directory, function_name, output_file,  input_files=None, log_file='/home/minje/projects/twitter_identity/logs/log_files.tsv'
