@@ -110,29 +110,30 @@ def collect_training_tweets(tweet_type, uids, load_dir, aux_load_dir=None):
                 for line in f:
                     obj=json.loads(line)
                     uid=obj['author_id']
-                    if tweet_type=='tweets_replies':
-                        if 'referenced_tweets' not in obj:
-                            text=obj['text']
-                            text = strip_tweet(text,url='replace')
-                            if uid not in uid2text:
-                                uid2text[uid]=[]
-                            uid2text[uid].append(text)
-                        else:
-                            if obj['referenced_tweets'][0]['type']=='replied_to':
+                    if uid in uids:
+                        if tweet_type=='tweets_replies':
+                            if 'referenced_tweets' not in obj:
                                 text=obj['text']
                                 text = strip_tweet(text,url='replace')
                                 if uid not in uid2text:
                                     uid2text[uid]=[]
                                 uid2text[uid].append(text)
-                    
-                    elif tweet_type=='retweets_quotes':
-                        if 'referenced_tweets' not in obj:
-                            if obj['referenced_tweets'][0]['type'] in ['retweeted','quoted']:
-                                text=obj['text']
-                                text = strip_tweet(text,url='replace')
-                                if uid not in uid2text:
-                                    uid2text[uid]=[]
-                                uid2text[uid].append(text)
+                            else:
+                                if obj['referenced_tweets'][0]['type']=='replied_to':
+                                    text=obj['text']
+                                    text = strip_tweet(text,url='replace')
+                                    if uid not in uid2text:
+                                        uid2text[uid]=[]
+                                    uid2text[uid].append(text)
+                        
+                        elif tweet_type=='retweets_quotes':
+                            if 'referenced_tweets' in obj:
+                                if obj['referenced_tweets'][0]['type'] in ['retweeted','quoted']:
+                                    text=obj['text']
+                                    text = strip_tweet(text,url='replace')
+                                    if uid not in uid2text:
+                                        uid2text[uid]=[]
+                                    uid2text[uid].append(text)
                     
 
     for uid,texts in uid2text.items():
@@ -141,7 +142,7 @@ def collect_training_tweets(tweet_type, uids, load_dir, aux_load_dir=None):
     return uid2text        
 
 
-def merge_training_sets_worker(tweet_type, identity, user_id_file, load_dir, aux_load_dir, save_dir,n_tweets_per_sample=5,multiple_samples_per_user=False):
+def merge_training_sets_worker(tweet_type, identity, user_id_file, load_dir, aux_load_dir, save_dir,n_tweets_per_sample=5,max_samples_per_user=5):
     """Loads a file and gets
 
     Args:
@@ -187,19 +188,17 @@ def merge_training_sets_worker(tweet_type, identity, user_id_file, load_dir, aux
     with gzip.open(join(save_dir,f'{tweet_type}.{identity}.tsv.gz'),'wt') as f:
         for uid,texts in tqdm(uid2text.items()):
             label = uid2label[uid]
-            if multiple_samples_per_user:
-                while(len(texts)>=n_tweets_per_sample):
-                    line = ' '.join(texts[:n_tweets_per_sample])
-                    f.write(f'{uid}\t{label}\t{line}\n')
-                    texts = texts[n_tweets_per_sample:]
-            else:
-                if len(texts)>=n_tweets_per_sample:
-                    line = ' '.join(sample(texts,n_tweets_per_sample))
-                    f.write(f'{uid}\t{label}\t{line}\n')
-    
+            
+            # write to file, a user can be represented as a max of "max_samples_per_user" times
+            if len(texts)>=max_samples_per_user*n_tweets_per_sample:
+                texts = sample(texts, max_samples_per_user*n_tweets_per_sample)
+            while(len(texts)>=n_tweets_per_sample):
+                line = ' '.join(texts[:n_tweets_per_sample])
+                f.write(f'{uid}\t{label}\t{line}\n')
+                texts = texts[n_tweets_per_sample:]    
     return
 
-def merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, multiple_samples_per_user=False):
+def merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, max_samples_per_user=5):
     """Loads all tweet files, and sorts them by each user, then by identity category
 
     Args:
@@ -215,11 +214,11 @@ def merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets
     all_inputs = []
     for tweet_type in tweet_types:
         for identity in identities:
-            all_inputs.append((tweet_type,identity,user_id_file,load_dir,aux_load_dir,save_dir,n_tweets_per_sample,multiple_samples_per_user))
+            all_inputs.append((tweet_type,identity,user_id_file,load_dir,aux_load_dir,save_dir,n_tweets_per_sample,max_samples_per_user))
     
-    # pool = Pool(30)
-    # pool.starmap(merge_training_sets_worker, all_inputs)
-    merge_training_sets_worker(*all_inputs[0])
+    pool = Pool(30)
+    pool.starmap(merge_training_sets_worker, all_inputs)
+    # merge_training_sets_worker(*all_inputs[0])
     
     write_data_file_info(__file__,merge_training_sets.__name__,save_dir,[load_dir])
     return
@@ -234,5 +233,5 @@ if __name__=='__main__':
     user_id_file = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/labels_200000.df.tsv'
     load_dir = '/shared/3/projects/bio-change/data/raw/identity_classifier-train_data'
     aux_load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/additional-tweets-from-api'
-    save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets-multiple_samples'
-    merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, 5, True)
+    save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets_per_sample-5_max_samples_per_user'
+    merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, max_samples_per_user=5)
