@@ -6,6 +6,7 @@ from os.path import join
 import gzip
 import re
 from multiprocessing import Pool
+from random import sample
 
 import pandas as pd
 import ujson as json
@@ -52,7 +53,7 @@ def merge_splitted_extracted_identities(load_dir,save_dir):
     return
 
 
-def collect_training_tweets(tweet_type, uids, load_dir):
+def collect_training_tweets(tweet_type, uids, load_dir, aux_load_dir=None):
     """iterates through all training samples to collect identity- and tweet_type-relevant tweets
 
     Args:
@@ -63,6 +64,7 @@ def collect_training_tweets(tweet_type, uids, load_dir):
         dictionary: contains the tweets for each user
     """
     uid2text = {}
+    # load tweets from load_dir, where the decahose tweets are stored
     for file in sorted(os.listdir(load_dir)):
         with gzip.open(join(load_dir,file),'rt') as f:
             for line in f:
@@ -100,6 +102,38 @@ def collect_training_tweets(tweet_type, uids, load_dir):
                                 if uid not in uid2text:
                                     uid2text[uid]=[]
                                 uid2text[uid].append(text)
+                                
+    # load tweets from aux_load_dir, where the api tweets are stored
+    if aux_load_dir:
+        for file in sorted(os.listdir(aux_load_dir)):
+            with open(join(aux_load_dir,file)) as f:
+                for line in f:
+                    obj=json.loads(line)
+                    uid=obj['author_id']
+                    if tweet_type=='tweets_replies':
+                        if 'referenced_tweets' not in obj:
+                            text=obj['text']
+                            text = strip_tweet(text,url='replace')
+                            if uid not in uid2text:
+                                uid2text[uid]=[]
+                            uid2text[uid].append(text)
+                        else:
+                            if obj['referenced_tweets'][0]['type']=='replied_to':
+                                text=obj['text']
+                                text = strip_tweet(text,url='replace')
+                                if uid not in uid2text:
+                                    uid2text[uid]=[]
+                                uid2text[uid].append(text)
+                    
+                    elif tweet_type=='retweets_quotes':
+                        if 'referenced_tweets' not in obj:
+                            if obj['referenced_tweets'][0]['type'] in ['retweeted','quoted']:
+                                text=obj['text']
+                                text = strip_tweet(text,url='replace')
+                                if uid not in uid2text:
+                                    uid2text[uid]=[]
+                                uid2text[uid].append(text)
+                    
 
     for uid,texts in uid2text.items():
         uid2text[uid]=list(set(texts))
@@ -107,24 +141,65 @@ def collect_training_tweets(tweet_type, uids, load_dir):
     return uid2text        
 
 
-def merge_training_sets_worker(tweet_type,identity, load_dir):
+def merge_training_sets_worker(tweet_type, identity, user_id_file, load_dir, aux_load_dir, save_dir,n_tweets_per_sample=5,multiple_samples_per_user=False):
+    """Loads a file and gets
+
+    Args:
+        tweet_type (_type_): _description_
+        identity (_type_): _description_
+        user_id_file (_type_): _description_
+        load_dir (_type_): _description_
+        aux_load_dir (_type_): _description_
+    """
+    # load set of user ids
     df = pd.read_csv(user_id_file,sep='\t',dtype={'user_id':str})
     df2 = df[df.identity==identity]
     uid2label = {uid:label for uid,_,label in df2.values}
     uids = set(df2['user_id'])
     # get all relevant tweets
     print(f'Loading all files and collecting tweets for {tweet_type} / {identity}')
-    uid2text = collect_training_tweets(tweet_type, uids, load_dir)
+    
+    # collect tweets
+    if not identity in ['age_13-17',
+        'age_18-24',
+        'age_25-34',
+        'age_35-49',
+        'age_50+',
+        'ethnicity_african',
+        'ethnicity_asian',
+        'ethnicity_hispanic',
+        'ethnicity_latin',
+        'gender_nonbinary',
+        'occupation_healthcare',
+        'occupation_influencer',
+        'political_anticonservative',
+        'political_antiliberal',
+        'political_blm',
+        'relationship_sibling',
+        'religion_atheism',
+        'religion_hinduism']:
+        aux_load_dir=None
+        
+    uid2text = collect_training_tweets(tweet_type, uids, load_dir, aux_load_dir)
     
     # save to file
     print(f'Writing tsv file for {tweet_type} / {identity}')
     with gzip.open(join(save_dir,f'{tweet_type}.{identity}.tsv.gz'),'wt') as f:
         for uid,texts in tqdm(uid2text.items()):
             label = uid2label[uid]
-            f.write(f'{uid}\t{label}\t'+'\t'.join(texts[:100])+'\n')
+            if multiple_samples_per_user:
+                while(len(texts)>=n_tweets_per_sample):
+                    line = ' '.join(texts[:n_tweets_per_sample])
+                    f.write(f'{uid}\t{label}\t{line}\n')
+                    texts = texts[n_tweets_per_sample:]
+            else:
+                if len(texts)>=n_tweets_per_sample:
+                    line = ' '.join(sample(texts,n_tweets_per_sample))
+                    f.write(f'{uid}\t{label}\t{line}\n')
+    
     return
 
-def merge_training_sets(user_id_file, load_dir, save_dir):
+def merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, multiple_samples_per_user=False):
     """Loads all tweet files, and sorts them by each user, then by identity category
 
     Args:
@@ -132,7 +207,7 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
         load_dir (_type_): _description_
         save_dir (_type_): _description_
     """
-        
+    # get (sub)identity types and tweet types
     df = pd.read_csv(user_id_file,sep='\t',dtype={'user_id':str})
     identities = sorted(df.identity.unique())
     tweet_types = ['retweets_quotes','tweets_replies']
@@ -140,23 +215,12 @@ def merge_training_sets(user_id_file, load_dir, save_dir):
     all_inputs = []
     for tweet_type in tweet_types:
         for identity in identities:
-            all_inputs.append((tweet_type,identity,load_dir))
+            all_inputs.append((tweet_type,identity,user_id_file,load_dir,aux_load_dir,save_dir,n_tweets_per_sample,multiple_samples_per_user))
     
-    pool = Pool(30)
-    pool.starmap(merge_training_sets_worker, all_inputs)
-            # df2 = df[df.identity==identity]
-            # uid2label = {uid:label for uid,_,label in df2.values}
-            # uids = set(df2['user_id'])
-            # # get all relevant tweets
-            # print(f'Loading all files and collecting tweets for {tweet_type} / {identity}')
-            # uid2text = collect_training_tweets(tweet_type, uids)
-            
-            # # save to file
-            # print(f'Writing tsv file for {tweet_type} / {identity}')
-            # with gzip.open(join(save_dir,f'{tweet_type}.{identity}.tsv.gz'),'wt') as f:
-            #     for uid,texts in tqdm(uid2text.items()):
-            #         label = uid2label[uid]
-            #         f.write(f'{uid}\t{label}\t'+'\t'.join(texts[:100])+'\n')
+    # pool = Pool(30)
+    # pool.starmap(merge_training_sets_worker, all_inputs)
+    merge_training_sets_worker(*all_inputs[0])
+    
     write_data_file_info(__file__,merge_training_sets.__name__,save_dir,[load_dir])
     return
 
@@ -169,5 +233,6 @@ if __name__=='__main__':
     # create training data out of the collected tweets
     user_id_file = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/labels_200000.df.tsv'
     load_dir = '/shared/3/projects/bio-change/data/raw/identity_classifier-train_data'
-    save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-tweets'
-    merge_training_sets(user_id_file, load_dir, save_dir)
+    aux_load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/additional-tweets-from-api'
+    save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets-multiple_samples'
+    merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, 5, True)
