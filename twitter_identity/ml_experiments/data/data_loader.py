@@ -1,5 +1,4 @@
-import os
-import pickle
+import gzip
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -13,13 +12,17 @@ from pytorch_lightning import LightningDataModule
 class TextDataset(Dataset):
     def __init__(self, data_file):
         data = []
-        with open(data_file) as f:
+        with gzip.open(data_file,'rt') as f:
             for line in f:
                 uid,label,text=line.split('\t')
                 text = text.strip()
                 data.append((text,int(label)))
         
         self.data = data
+        
+        # compute class weights
+        n_pos = sum([x[1] for x in data])
+        self.weight = (len(data)-n_pos)/n_pos
         return
 
     def __getitem__(self, index):
@@ -67,10 +70,13 @@ class DataModuleForIdentityClassification(LightningDataModule):
             'test': TextDataset(data_file=self.hparams.test_file),            
         }
         
+        # save class weights
+        self.weight = self.datasets['train'].weight
+        
         # load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.hparams.model_name_or_path,
-            cache_dir=self.model_cache_dir
+            cache_dir=self.hparams.model_cache_dir
         )
         return
 
@@ -95,10 +101,10 @@ class DataModuleForIdentityClassification(LightningDataModule):
         return outputs
 
     def train_dataloader(self):
-        return DataLoader(self.datasets["train"], batch_size=self.train_batch_size, shuffle=True, num_workers=self.num_workers, collate_fn=self.collate_fn)
+        return DataLoader(self.datasets["train"], batch_size=self.hparams.train_batch_size, shuffle=True, num_workers=self.hparams.num_workers, collate_fn=self.collate_fn)
 
     def val_dataloader(self):
-        return DataLoader(self.datasets["val"], batch_size=self.eval_batch_size, shuffle=False, num_workers=self.num_workers, collate_fn=self.collate_fn)
+        return DataLoader(self.datasets["val"], batch_size=self.hparams.eval_batch_size, shuffle=False, num_workers=self.hparams.num_workers, collate_fn=self.collate_fn)
 
     def test_dataloader(self):
-        return DataLoader(self.datasets["test"], batch_size=self.eval_batch_size, shuffle=False, num_workers=self.num_workers, collate_fn=self.collate_fn)
+        return DataLoader(self.datasets["test"], batch_size=self.hparams.eval_batch_size, shuffle=False, num_workers=self.hparams.num_workers, collate_fn=self.collate_fn)
