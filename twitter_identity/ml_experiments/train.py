@@ -99,7 +99,7 @@ if __name__=='__main__':
         args.model_name_or_path='cardiffnlp/tweet-topic-21-multi'
         args.max_epochs=10
         args.warmup_steps=0.06
-        args.weighted_class_loss=True
-        args.patience=3
+        args.weighted_class_loss=False
+        args.patience=1
     train(args)
             
