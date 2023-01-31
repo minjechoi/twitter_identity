@@ -6,7 +6,7 @@ from os.path import join
 import gzip
 import re
 from multiprocessing import Pool
-from random import sample
+from random import sample, shuffle
 
 import pandas as pd
 import ujson as json
@@ -185,6 +185,8 @@ def merge_training_sets_worker(tweet_type, identity, user_id_file, load_dir, aux
     
     # save to file
     print(f'Writing tsv file for {tweet_type} / {identity}')
+    if '/' in identity:
+        identity=identity.replace('/','')
     with gzip.open(join(save_dir,f'{tweet_type}.{identity}.tsv.gz'),'wt') as f:
         for uid,texts in tqdm(uid2text.items()):
             label = uid2label[uid]
@@ -223,6 +225,52 @@ def merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets
     write_data_file_info(__file__,merge_training_sets.__name__,save_dir,[load_dir])
     return
 
+def split_data_train_test_val_worker(load_file, load_dir, save_dir):
+    # get all tweets for each user so that the same user doesn't appear in multiple splits
+    user2data = {}
+    with gzip.open(join(load_dir,load_file),'rt') as f:
+        for line in f:
+            uid,label,text=line.split('\t')
+            if uid not in user2data:
+                user2data[uid]=[]
+            user2data[uid].append(line)
+    
+    # assign users to train/test/val
+    uids = list(user2data.keys())
+    shuffle(uids)
+    
+    file_prefix = '.'.join(load_file.split('.')[:2])
+    ln1 = int(len(uids)*0.1)
+    ln2 = int(len(uids)*0.2)
+    
+    with gzip.open(join(save_dir,f'{file_prefix}.val.tsv.gz'),'wt') as f:
+        for uid in uids[:ln1]:
+            lines = user2data[uid]
+            for line in lines:
+                f.write(line)
+    print(f"Wrote val set for {file_prefix}")
+    with gzip.open(join(save_dir,f'{file_prefix}.test.tsv.gz'),'wt') as f:
+        for uid in uids[ln1:ln2]:
+            lines = user2data[uid]
+            for line in lines:
+                f.write(line)
+    print(f"Wrote test set for {file_prefix}")
+    with gzip.open(join(save_dir,f'{file_prefix}.train.tsv.gz'),'wt') as f:
+        for uid in uids[ln2:]:
+            lines = user2data[uid]
+            for line in lines:
+                f.write(line)
+    print(f"Wrote train set for {file_prefix}")
+    return
+
+def split_data_train_test_val(load_dir, save_dir):
+    files = sorted(os.listdir(load_dir))
+    inputs = [(file,load_dir,save_dir) for file in files]
+    pool = Pool(30)
+    pool.starmap(split_data_train_test_val_worker, inputs)
+    write_data_file_info(__file__,split_data_train_test_val.__name__,save_dir,[load_dir])
+    return
+
 if __name__=='__main__':
     # merge the identity files
     # load_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/splitted'
@@ -230,8 +278,13 @@ if __name__=='__main__':
     # merge_splitted_extracted_identities(load_dir, save_dir)
     
     # create training data out of the collected tweets
-    user_id_file = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/labels_200000.df.tsv'
-    load_dir = '/shared/3/projects/bio-change/data/raw/identity_classifier-train_data'
-    aux_load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/additional-tweets-from-api'
-    save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets_per_sample-5_max_samples_per_user'
-    merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, max_samples_per_user=5)
+    # user_id_file = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/labels_200000.df.tsv'
+    # load_dir = '/shared/3/projects/bio-change/data/raw/identity_classifier-train_data'
+    # aux_load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/additional-tweets-from-api'
+    # save_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets_per_sample-5_max_samples_per_user'
+    # merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, max_samples_per_user=5)
+    
+    # split into train/test/val splits
+    load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets_per_sample-5_max_samples_per_user'
+    save_dir = '/shared/3/projects/bio-change/data/processed/identity_classifier-train_data'
+    split_data_train_test_val(load_dir, save_dir)
