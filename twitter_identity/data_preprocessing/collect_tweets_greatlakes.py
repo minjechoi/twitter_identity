@@ -32,9 +32,9 @@ def get_twitter_files():
             if res:
                 y,m=res[0]
                 y,m=int(y),int(m)
-                if (y==2020) and (m in [4,5,6]):
+                # if (y==2020) and (m in [4,5,6]):
                 # if y in [2020,2021]:
-                    twitter_file_names.append(join(base_dir,file))
+                twitter_file_names.append(join(base_dir,file))
     print(f"{len(twitter_file_names)} files in total!")
     return twitter_file_names
 
@@ -136,7 +136,7 @@ def add_reply_info(obj,out):
     out['tweet_type']='reply' if obj['in_reply_to_status_id_str'] else 'mention'
     return out
 
-def collect_tweets(file, user_id_file, save_dir):
+def collect_tweets(file, save_dir):
     """Loads 
 
     Args:
@@ -153,13 +153,25 @@ def collect_tweets(file, user_id_file, save_dir):
     print(f'Starting {file}')
 
     # load users
-    uids={}
-    df = pd.read_csv(user_id_file, sep='\t', dtype={'user_id':str})
-    valid_users = set()
-    valid_users.update(df['user_id'])
+    valid_users=set()
+    with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_treated_users.tsv') as f:
+        for line in f:
+            line=line.split('\t')
+            uid=line[1]
+            valid_users.add(uid)
+    with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_potential_control_users.tsv') as f:
+        for line in f:
+            line=line.split('\t')
+            uid=line[0]
+            valid_users.add(uid)
+
+    uid2user = {} # to store user info
+
 
     cnt = 0
-    with bz2.open(file,'rt') as f:
+    save_file=file.split('/')[-1].replace('.bz2','.gz')
+    with bz2.open(file,'rt') as f,\
+        gzip.open(join(save_dir, 'tweets.'+save_file), 'wt') as outf:
         # cnt = 0
         try:
             for ln,line in enumerate(f):
@@ -187,9 +199,9 @@ def collect_tweets(file, user_id_file, save_dir):
                     cnt+=1
                     uid = obj['user']['id_str']
                     # get user info first
-                    if uid not in uids:
+                    if uid not in uid2user:
                         user = get_user_info(obj['user'])
-                        uids[uid] = user
+                        uid2user[uid] = user
                     # get tweet info
                     try:
                         out = get_tweet_info(obj)
@@ -201,9 +213,9 @@ def collect_tweets(file, user_id_file, save_dir):
                     for status in ['retweeted_status', 'quoted_status']:
                         if status in obj:
                             uid = obj[status]['user']['id_str']
-                            if uid not in uids:
+                            if uid not in uid2user:
                                 user = get_user_info(obj[status]['user'])
-                                uids[uid] = user
+                                uid2user[uid] = user
                             try:
                                 out = add_retweet_info(obj[status], out, status)
                             except:
@@ -220,20 +232,19 @@ def collect_tweets(file, user_id_file, save_dir):
                             except:
                                 print("Error in add_reply_info function!")
                                 continue
+                    
+
 
                     # get data at the end
-                    tweets.append(out)
+                    outf.write(json.dumps(obj)+'\n')
+                    # tweets.append(out)
         except:
             pass
 
     # save files
-    save_file=file.split('/')[-1].replace('.bz2','.gz')
-    with gzip.open(join(save_dir, 'tweets.'+save_file), 'wt') as outf:
-        for obj in tweets:
+    with gzip.open(join(save_dir, 'users.'+save_file), 'wt') as outf:
+        for obj in uid2user.keys():
             outf.write(json.dumps(obj)+'\n')
-    # with gzip.open(join(save_dir, 'users.'+save_file), 'wt') as outf:
-    #     for obj in users.keys():
-    #         outf.write(json.dumps(obj)+'\n')
     print(f'Completed {file.split("/")[-1]}\t{cnt}/{ln} lines!\t{int(time()-start)} seconds!')
     return
 
@@ -318,7 +329,7 @@ def test_multiprocessing():
     print("Total time: ",int(time()-start))
     return
 
-def set_multiprocessing(user_id_file, save_dir, modulo=None):
+def set_multiprocessing(save_dir, modulo=None):
     """Script for running multiprocessing on greatlakes slurm.
 
     Args:
@@ -334,7 +345,7 @@ def set_multiprocessing(user_id_file, save_dir, modulo=None):
     files=get_twitter_files()
     if type(modulo)==str:
         modulo=int(modulo)
-        files=[files[i] for i in range(len(files)) if i%5==modulo]
+        files=[files[i] for i in range(len(files)) if i%10==modulo]
     print(len(files),' files to read!')
 
     inputs = []
@@ -344,7 +355,7 @@ def set_multiprocessing(user_id_file, save_dir, modulo=None):
         os.makedirs(save_dir)
 
     for twitter_file in files:
-        inputs.append((twitter_file, user_id_file, save_dir))
+        inputs.append((twitter_file, save_dir))
     # try:
     # pool.map(collect_tweets,files)
     pool.starmap(collect_tweets,inputs)
@@ -374,16 +385,14 @@ if __name__=='__main__':
     # print("Start job")
 
     files = get_twitter_files()
-    user_id_file='/scratch/drom_root/drom0/minje/bio-change/05.classifier-training-data/labels_200000.df.tsv'
-    save_dir='/scratch/drom_root/drom0/minje/bio-change/05.classifier-training-data/all-tweets'
-    set_multiprocessing(user_id_file=user_id_file, save_dir=save_dir, modulo=sys.argv[1])
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
+    set_multiprocessing(save_dir=save_dir, modulo=sys.argv[1])
 
     # collect_tweets(
     #     file=files[0],
     #     user_id_file='/scratch/drom_root/drom0/minje/bio-change/05.classifier-training-data/labels_200000.df.tsv',
     #     save_dir='/scratch/drom_root/drom0/minje/bio-change/05.classifier-training-data/all-tweets'
     #     )
-
     
     # set_multiprocessing()
     # set_multiprocessing(sys.argv[1])
