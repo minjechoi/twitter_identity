@@ -27,7 +27,7 @@ def train(args):
     # modules for checkpointing
     checkpoint_callback = ModelCheckpoint(
         save_top_k=1, 
-        monitor="val_f1",
+        monitor="val_auc",
         mode="max",
         dirpath=args.default_root_dir,
         filename="checkpoint-{epoch}-{val_f1:.2f}-{val_auc:.2f}-{val_loss:.2f}",
@@ -35,7 +35,7 @@ def train(args):
         save_weights_only=True)
 
     early_stop_callback = EarlyStopping(
-        monitor="val_f1",
+        monitor="val_auc",
         mode="max",
         min_delta=0.0, 
         patience=args.patience, 
