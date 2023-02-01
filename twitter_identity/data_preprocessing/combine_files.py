@@ -324,6 +324,120 @@ def split_data_train_test_val(load_dir, save_dir, n_train_samples=50000):
     write_data_file_info(__file__,split_data_train_test_val.__name__,save_dir,[load_dir])
     return
 
+def merge_user_files(user_dir,save_dir):
+    uid2info = {}
+    files = sorted(os.listdir(user_dir))
+    pbar = tqdm(files)
+    for file in pbar:
+        dt = file.split('.')[2]
+        with gzip.open(join(user_dir,file),'rt') as f:
+            for line in f:
+                obj=json.loads(line)
+                uid=obj['id_str']
+                if uid not in uid2info:
+                    obj['current_data']=dt
+                    uid2info[uid] = obj
+        pbar.set_description(f'{len(uid2info)} users')
+    
+    outf = gzip.open(join(save_dir,'all_user_profiles.json.gz'),'wt')
+    for obj in tqdm(uid2info.values()):
+        outf.write(json.dumps(obj)+'\n')
+    outf.close()
+    return
+
+from datetime import datetime
+from dateutil.parser import parse
+import numpy as np
+def get_weekly_bins(timestamp):
+    """
+    A function that returns the number of the week based on starting date (2020.04.01)
+    :param timestamp: the current timestamp
+    :return:
+    """
+    dt_base = datetime(2020, 4, 1)
+    try:
+        dt_current = datetime.fromtimestamp(float(timestamp))
+    except:
+        dt_current = parse(timestamp)
+    dt_current = dt_current.replace(tzinfo=None)
+    diff = dt_current - dt_base
+    try:
+        diff = dt_current - dt_base
+    except:
+        print('dt-current',dt_current)
+        print('dt-base',dt_base)
+        print(timestamp)
+        import sys
+        sys.exit(0)
+    return int(np.floor(diff.days / 7))
+
+def get_tweet_activity_worker(user_file, tweet_file, save_dir, weeks_prior=8, weeks_post=12):
+    from twitter_identity.utils.utils import get_weekly_bins
+    
+    uid2week = {}
+    df_uid = pd.read_csv(user_file,sep='\t',dtype={'user_id':str})
+    for uid,dt in df_uid[['user_id','timestamp_treated']].values:
+        uid2week[uid] = get_weekly_bins(dt)
+
+    uid2tweets = {uid:[] for uid in uid2week.keys()} # when uid posted something or responded to someone
+    uid2origins = {uid:[] for uid in uid2week.keys()} # when uid was the origin of someone's response
+    files = sorted(os.listdir(tweet_dir))
+    
+    cnt=0
+    all_tids = set()
+    with gzip.open(tweet_file,'rt') as f:
+        for line in f:
+            obj=json.loads(line)
+            tid = obj['id']
+            if tid in all_tids:
+                continue
+            if 'user_id' in obj:
+                uid=obj['user_id']
+                if uid in uid2tweets:
+                    week1 = uid2week[uid]
+                    week2 = get_weekly_bins(obj['created_at'])
+                    wd = week2-week1
+                    if (wd>=-weeks_prior) and (wd<=weeks_post):
+                        uid2tweets[uid].append(obj)
+                        all_tids.add(tid)
+                        cnt+=1
+                        
+            if 'user_id_origin' in obj:
+                uid=obj['user_id_origin']
+                if uid in uid2origins:
+                    week1 = uid2week[uid]
+                    week2 = get_weekly_bins(obj['created_at'])
+                    wd = week2-week1
+                    if (wd>=-weeks_prior) and (wd<=weeks_post):
+                        uid2tweets[uid].append(obj)
+                        all_tids.add(tid)
+                        cnt+=1
+    
+    # write tweets
+    with gzip.open(join(save_dir,f'activities_made.{tweet_file}'),'wt') as f:
+        for uid,V in uid2tweets.items():
+            for obj in V:
+                f.write(json.dumps(obj)+'\n')
+                
+    with gzip.open(join(save_dir,f'activities_origin.{tweet_file}'),'wt') as f:
+        for uid,V in uid2origins.items():
+            for obj in V:
+                f.write(json.dumps(obj)+'\n')
+    
+    # write_data_file_info(__file__, get_tweet_activity.__name__, save_dir, [user_file,tweet_dir])
+    return
+    
+def get_tweet_activity(user_file, tweet_dir, save_dir, weeks_prior=9, weeks_post=12):
+    files = sorted([file for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
+    inputs = []
+    for tweet_file in files:
+        inputs.append((user_file, tweet_file, save_dir, weeks_prior, weeks_post))
+        
+    # pool = Pool(32)
+    # pool.starmap(get_tweet_activity_worker, inputs)
+    get_tweet_activity_worker(*inputs[100])
+    return
+
 if __name__=='__main__':
     # merge the identity files
     # load_dir = '/shared/3/projects/bio-change/data/interim/description_changes/extracted/splitted'
@@ -338,6 +452,17 @@ if __name__=='__main__':
     # merge_training_sets(user_id_file, load_dir, aux_load_dir, save_dir, n_tweets_per_sample=5, max_samples_per_user=5)
     
     # split into train/test/val splits
-    load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets_per_sample-5_max_samples_per_user'
-    save_dir = '/shared/3/projects/bio-change/data/processed/identity_classifier-train_data'
-    split_data_train_test_val(load_dir, save_dir, 50000)
+    # load_dir = '/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/train_data/5_tweets_per_sample-5_max_samples_per_user'
+    # save_dir = '/shared/3/projects/bio-change/data/processed/identity_classifier-train_data'
+    # split_data_train_test_val(load_dir, save_dir, 50000)
+    
+    # merge user info files
+    # user_dir = '/shared/3/projects/bio-change/data/external/treated-control-tweets/users'
+    # save_dir = '/shared/3/projects/bio-change/data/external/treated-control-tweets'
+    # merge_user_files(user_dir, save_dir)
+    
+    # gets activities of valid users ranged by weeks since profile update
+    user_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
+    tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
+    save_dir= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/activity_around_profile_update'
+    get_tweet_activity(user_file, tweet_dir, save_dir, 8, 12)
