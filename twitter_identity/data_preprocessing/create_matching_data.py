@@ -52,10 +52,11 @@ def obtain_profile_features(uids, user_info_file, save_dir):
     out = []
     for uid,V in uid2info.items():
         if V is not None:
-            out.append((uid, V['fri'], V['fol'], V['sta'], V['created_at'], V['screen_name'], V['name']))
+            out.append((uid, V['fri'], V['fol'], V['sta'], V['created_at']))
     df=pd.DataFrame(out,columns=['user_id','fri','fol','sta','created_at'])
     save_file = join(save_dir,'user_activity_features.df.tsv')
     df.to_csv(save_file,sep='\t',index=False)
+    print(df.shape)
     print(f'Saved to {save_file}')
     return
 
@@ -71,6 +72,7 @@ def obtain_description_features(uids, desc_file, save_dir):
     with gzip.open(desc_file,'rt') as f:
         for line in f:
             uid,dt,desc=line.split('\t')
+            desc=desc.strip()
             if uid in uid2info:
                 uid2info[uid].append((float(dt),desc))
     
@@ -83,6 +85,7 @@ def obtain_description_features(uids, desc_file, save_dir):
     df=pd.DataFrame(out,columns=['user_id','timestamp_treated','week_treated','profile_before_update'])
     save_file = join(save_dir,'description_features.df.tsv')
     df.to_csv(save_file,sep='\t',index=False)
+    print(df.shape)
     print(f'Saved to {save_file}')
     return
 
