@@ -206,6 +206,150 @@ def identify_identity_positive_and_negative_users(user_file,save_dir,max_users=1
     #     print(f'{k}:{cn[k]}/{ln} ({dn})')
     return
 
+def get_treated_users(description_file, extracted_file, save_dir):
+    """Function for identifying treated users
+
+    Args:
+        load_file (_type_): _description_
+        save_dir (_type_): _description_
+    """
+    
+    # identify users who made only 1 change in their history
+    uid2lines={}
+    with gzip.open(description_file,'rt') as f:
+        for ln,_ in enumerate(f):
+            continue
+            
+    with gzip.open(description_file,'rt') as f:
+        for line in tqdm(f,total=ln):
+            uid,dt,desc=line.split('\t')
+            if uid not in uid2lines:
+                uid2lines[uid]=0
+            uid2lines[uid]+=1
+    S1=set([uid for uid,cnt in uid2lines.items() if cnt==2])
+    print(f'{len(S1)} users who made only one change in the period!')
+    
+    # identify the identities of each user by each profile version
+    with gzip.open(extracted_file,'rt') as f:
+        for ln,_ in enumerate(f):
+            continue
+
+    uid2identities={}
+    with gzip.open(extracted_file,'rt') as f:
+        for line in tqdm(f,total=ln):
+            line=line.strip().split('\t')
+            uid,dt=line[:2]
+            if uid in S1:
+                if uid not in uid2identities:
+                    uid2identities[uid]=[]
+                identities=[]
+                for id_ in line[2:]:
+                    identities.extend(id_.split('|'))
+                uid2identities[uid].append((float(dt),identities))
+
+    valid_treated=[] # users who had zero identities posted but added something on their profiles
+    valid_control=[] # users who had zero identities posted and did update their profiles but didn't add identity phrase
+    for uid,(v1,v2) in tqdm(uid2identities.items()):
+        dt1,arr1 = v1
+        dt2,arr2 = v2
+        if len(arr1)==0:
+            if len(arr2)>0:
+                valid_treated.append(uid)
+            else:
+                valid_control.append(uid)
+    print(f'{len(valid_treated)} users who added an identity in their new profile!')
+    
+    # get users that can be correctly mapped to an identity     
+    cat2treated = {}
+    # test_uids = set(['1015817063938646016','1067904677285629953','1215409779583201280','4111265533'])
+    for uid in tqdm(valid_treated):
+        dt,arr = uid2identities[uid][1]
+        arr = [x.split(':') for x in arr] # [[cat,phrases], [cat,phrases], ..., [cat,phrases]]
+        if len(arr)==1:
+            # one identity only - add straightaway
+            cat=arr[0][0]
+            if cat in ['political_anticonservative','political_antiliberal']:
+                continue
+            if cat not in cat2treated:
+                cat2treated[cat]={}
+            cat2treated[cat][uid]=(dt,arr[0][1])
+        else:
+            # multiple identity signals - look for conflicting identities
+            # age - remove if multiple ages are included
+            if len([cat for cat,phrases in arr if cat.startswith('age')])>1:
+                arr = [x for x in arr if not x[0].startswith('age')]
+                
+            # gender - remove if men and women appear at the same time
+            if len([cat for cat,phrases in arr if cat.startswith('gender')])>1:
+                # consider as nonbinary
+                phrases = ','.join([x[1] for x in arr if x[0].startswith('gender')])
+                arr = [x for x in arr if not x[0].startswith('gender')] + [('gender_nonbinary',phrases)]
+                
+            # religion
+            if len([cat for cat,phrases in arr if cat.startswith('religion')])>1:
+                flag1 = len([cat for cat,phrases in arr if cat.startswith('religion')])==2
+                flag2 = False
+                for cat,_ in arr:
+                    if cat=='religion_general':
+                        flag2=True
+                        break
+                if not (flag1&flag2): # remove duplicate religion phrases
+                    arr = [x for x in arr if not x[0].startswith('religion')]
+                    
+            # political - remove if user has antiliberal or anticonservative
+            pol_cats = set([x[0] for x in arr if (x[0].startswith('political_') and (x[0]!='political_blm'))])
+            flag1=False
+            if ('political_anticonservative' in pol_cats) or ('political_antiliberal' in pol_cats):
+                flag1=True
+            flag2=False
+            # political - remove if user has both conservative and liberal
+            if ('political_conservative' in pol_cats) and ('political_liberal' in pol_cats):
+                flag2=True
+            # if uid in test_uids:
+            #     test = [x[0] for x in arr]
+            #     print(test)
+            #     print(arr)
+            #     print(pol_cats)
+            #     print(flag1,flag2)
+                
+            if flag1 or flag2:
+                arr = [x for x in arr if (x[0]=='political_blm') or (x[0].startswith('political')==False)]
+                # arr = [x for x in arr if not ((x[0].startswith('political')) and (x[0]!='political_blm'))] # remove all political instances that are not blm
+            
+            # use remaining phrases (if any)
+            for cat,phrases in arr:
+                # if cat=='political_anticonservative':
+                #     print(uid,arr)
+                if cat not in cat2treated:
+                    cat2treated[cat]={}
+                cat2treated[cat][uid]=(dt,phrases)
+
+    print("Saving treated users!")
+    output_file = join(save_dir,'all_treated_users.tsv')
+    cnt=0
+    with open(output_file,'w') as f:
+        for cat,D in tqdm(cat2treated.items()):
+            for uid,(dt,phrases) in D.items():
+                f.write(f'{cat}\t{uid}\t{dt}\t{phrases}\n')
+                cnt+=1
+    
+    write_data_file_info(__file__,get_treated_users.__name__, output_file, [description_file,extracted_file])
+    print(f"{cnt} treated users!")
+    for cat in sorted(cat2treated.keys()):
+        D=cat2treated[cat]
+        print(f'{cat}:{len(D)} treated users')
+    
+    print("Saving potential control users!")
+    output_file = join(save_dir,'all_potential_control_users.tsv')
+    with open(output_file,'w') as f:
+        for uid in tqdm(valid_control):
+            dt,_ = uid2identities[uid][1] # dt at the time when the change was made
+            f.write(f'{uid}\t{dt}\n')
+    write_data_file_info(__file__,get_treated_users.__name__, output_file, [description_file,extracted_file])
+        
+    return    
+    
+
 
 if __name__=='__main__':
     # get all uids from description files
@@ -237,8 +381,14 @@ if __name__=='__main__':
     # filter_valid_users(input_dir,filter_dirs,output_dir)
 
     # get positive and negative users
-    identify_identity_positive_and_negative_users(
-        user_file='/shared/3/projects/bio-change/data/interim/description_changes/extracted/description_changes.0_changes.all_identities.json.gz',
-        save_dir='/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/',
-        max_users=200000
+    # identify_identity_positive_and_negative_users(
+    #     user_file='/shared/3/projects/bio-change/data/interim/description_changes/extracted/description_changes.0_changes.all_identities.json.gz',
+    #     save_dir='/shared/3/projects/bio-change/data/interim/identity_classifier-train_data/positive-negative-users/',
+    #     max_users=200000
+    # )
+    
+    get_treated_users(
+        description_file='/shared/3/projects/bio-change/data/interim/description_changes/filtered/description_changes_1plus_changes.tsv.gz', 
+        extracted_file='/shared/3/projects/bio-change/data/interim/description_changes/extracted/description_changes.1plus_changes.all_identities.json.gz', 
+        save_dir='/shared/3/projects/bio-change/data/interim/treated-control-users'
     )
