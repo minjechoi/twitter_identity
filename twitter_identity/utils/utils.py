@@ -18,9 +18,17 @@ def get_weekly_bins(timestamp):
         dt_current = datetime.fromtimestamp(float(timestamp))
     except:
         dt_current = parse(timestamp)
-        
+    dt_current = dt_current.replace(tzinfo=None)
     diff = dt_current - dt_base
-    return diff.days / 7
+    try:
+        diff = dt_current - dt_base
+    except:
+        print('dt-current',dt_current)
+        print('dt-base',dt_base)
+        print(timestamp)
+        import sys
+        sys.exit(0)
+    return int(np.floor(diff.days / 7))
 
 _STRIP_TYPES = Literal[None, 'replace', 'remove']
 def strip_tweet(text, url: _STRIP_TYPES='remove', username: _STRIP_TYPES='replace', hashtag: _STRIP_TYPES=None, non_ascii=True, lowercase=False, remove_rt=True):
