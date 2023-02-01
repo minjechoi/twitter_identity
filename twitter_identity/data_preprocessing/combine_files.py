@@ -13,7 +13,7 @@ import pandas as pd
 import ujson as json
 from tqdm import tqdm
 
-from twitter_identity.utils.utils import write_data_file_info, strip_tweet
+# from twitter_identity.utils.utils import write_data_file_info, strip_tweet
 
 def merge_splitted_extracted_identities(load_dir,save_dir):
     """Merges the extracted identity shards
@@ -372,7 +372,6 @@ def get_weekly_bins(timestamp):
     return int(np.floor(diff.days / 7))
 
 def get_tweet_activity_worker(user_file, tweet_file, save_dir, weeks_prior=8, weeks_post=12):
-    from twitter_identity.utils.utils import get_weekly_bins
     
     uid2week = {}
     df_uid = pd.read_csv(user_file,sep='\t',dtype={'user_id':str})
@@ -409,33 +408,34 @@ def get_tweet_activity_worker(user_file, tweet_file, save_dir, weeks_prior=8, we
                     week2 = get_weekly_bins(obj['created_at'])
                     wd = week2-week1
                     if (wd>=-weeks_prior) and (wd<=weeks_post):
-                        uid2tweets[uid].append(obj)
+                        uid2origins[uid].append(obj)
                         all_tids.add(tid)
                         cnt+=1
     
     # write tweets
-    with gzip.open(join(save_dir,f'activities_made.{tweet_file}'),'wt') as f:
+    save_file = tweet_file.split('/')[-1].replace('tweets.','')
+    with gzip.open(join(save_dir,f'activities_made.{save_file}'),'wt') as f:
         for uid,V in uid2tweets.items():
             for obj in V:
                 f.write(json.dumps(obj)+'\n')
                 
-    with gzip.open(join(save_dir,f'activities_origin.{tweet_file}'),'wt') as f:
+    with gzip.open(join(save_dir,f'activities_origin.{save_file}'),'wt') as f:
         for uid,V in uid2origins.items():
             for obj in V:
                 f.write(json.dumps(obj)+'\n')
-    
+    print(f'{len(all_tids)} tweets for {save_file}')
     # write_data_file_info(__file__, get_tweet_activity.__name__, save_dir, [user_file,tweet_dir])
     return
     
 def get_tweet_activity(user_file, tweet_dir, save_dir, weeks_prior=9, weeks_post=12):
-    files = sorted([file for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
+    files = sorted([join(tweet_dir,file) for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
     inputs = []
     for tweet_file in files:
         inputs.append((user_file, tweet_file, save_dir, weeks_prior, weeks_post))
         
-    # pool = Pool(32)
-    # pool.starmap(get_tweet_activity_worker, inputs)
-    get_tweet_activity_worker(*inputs[100])
+    pool = Pool(32)
+    pool.starmap(get_tweet_activity_worker, inputs)
+    # get_tweet_activity_worker(*inputs[100])
     return
 
 if __name__=='__main__':
