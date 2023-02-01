@@ -37,6 +37,7 @@ def obtain_profile_features(uids, user_info_file, save_dir):
         save_dir (_type_): _description_
     """
     uid2info = {uid:None for uid in uids}
+    print(len(uids))
     with gzip.open(user_info_file,'rt') as f:
         for line in f:
             obj = json.loads(line)
@@ -47,14 +48,12 @@ def obtain_profile_features(uids, user_info_file, save_dir):
                     'fol':obj['followers_count'],
                     'sta':obj['statuses_count'],
                     'created_at':obj['created_at'],
-                    'name':obj['name'],
-                    'screen_name':obj['screen_name']
                     }
     out = []
     for uid,V in uid2info.items():
         if V is not None:
             out.append((uid, V['fri'], V['fol'], V['sta'], V['created_at'], V['screen_name'], V['name']))
-    df=pd.DataFrame(out,columns=['user_id','fri','fol','sta','created_at','screen_name','name'])
+    df=pd.DataFrame(out,columns=['user_id','fri','fol','sta','created_at'])
     save_file = join(save_dir,'user_activity_features.df.tsv')
     df.to_csv(save_file,sep='\t',index=False)
     print(f'Saved to {save_file}')
