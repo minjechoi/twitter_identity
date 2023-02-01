@@ -169,81 +169,89 @@ def collect_tweets(file, save_dir):
 
 
     cnt = 0
+    if file.endswith('.gz'):
+        f = gzip.open(file,'rt')
+    elif file.endswith('.bz2'):
+        f = bz2.open(file,'rt')
+
+    file = file.replace('tweets.','').strip()
     save_file=file.split('/')[-1].replace('.bz2','.gz')
-    with bz2.open(file,'rt') as f,\
-        gzip.open(join(save_dir, 'tweets.'+save_file), 'wt') as outf:
-        # cnt = 0
-        try:
-            for ln,line in enumerate(f):
-                # if ln>100000:
-                #     break
-                # if ln%1000000==0:
-                #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
-                # if ln>1000000:
-                #     break
+    outf = gzip.open(join(save_dir, 'tweets.'+save_file), 'wt')
 
-                # load object
+    try:
+        for ln,line in enumerate(f):
+            # if ln>100000:
+            #     break
+            # if ln%1000000==0:
+            #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
+            # if ln>1000000:
+            #     break
+
+            # load object
+            try:
+                obj=json.loads(line)
+            except:
+                print("Error reading json! Skipping...")
+                continue
+            
+            # test if object is affiliated with our users of interest
+            try:
+                flag = verify_tweet_of_interest(obj,valid_users)
+            except:
+                print("Error computing flag! Skipping...")
+                continue
+            if flag:
+                cnt+=1
+                uid = obj['user']['id_str']
+                # get user info first
+                if uid not in uid2user:
+                    user = get_user_info(obj['user'])
+                    uid2user[uid] = user
+                # get tweet info
                 try:
-                    obj=json.loads(line)
+                    out = get_tweet_info(obj)
                 except:
-                    print("Error reading json! Skipping...")
+                    print("Error in get_tweet_info function!")
                     continue
-                
-                # test if object is affiliated with our users of interest
-                try:
-                    flag = verify_tweet_of_interest(obj,valid_users)
-                except:
-                    print("Error computing flag! Skipping...")
-                    continue
-                if flag:
-                    cnt+=1
-                    uid = obj['user']['id_str']
-                    # get user info first
-                    if uid not in uid2user:
-                        user = get_user_info(obj['user'])
-                        uid2user[uid] = user
-                    # get tweet info
-                    try:
-                        out = get_tweet_info(obj)
-                    except:
-                        print("Error in get_tweet_info function!")
-                        continue
-                    flag2 = True
-                    # get retweet info
-                    for status in ['retweeted_status', 'quoted_status']:
-                        if status in obj:
-                            uid = obj[status]['user']['id_str']
-                            if uid not in uid2user:
-                                user = get_user_info(obj[status]['user'])
-                                uid2user[uid] = user
-                            try:
-                                out = add_retweet_info(obj[status], out, status)
-                            except:
-                                print("Error in add_retweet_info function!")
-                                continue
-                            flag2 = False
+                flag2 = True
+                # get retweet info
+                for status in ['retweeted_status', 'quoted_status']:
+                    if status in obj:
+                        uid = obj[status]['user']['id_str']
+                        if uid not in uid2user:
+                            user = get_user_info(obj[status]['user'])
+                            uid2user[uid] = user
+                        try:
+                            out = add_retweet_info(obj[status], out, status)
+                        except:
+                            print("Error in add_retweet_info function!")
                             continue
-                    # else, plain tweet or reply
-                    if flag2:
-                        # get reply info
-                        if obj['in_reply_to_user_id_str']:
-                            try:
-                                out = add_reply_info(obj, out)
-                            except:
-                                print("Error in add_reply_info function!")
-                                continue
-                    
+                        flag2 = False
+                        continue
+                # else, plain tweet or reply
+                if flag2:
+                    # get reply info
+                    if obj['in_reply_to_user_id_str']:
+                        try:
+                            out = add_reply_info(obj, out)
+                        except:
+                            print("Error in add_reply_info function!")
+                            continue
+                
 
 
-                    # get data at the end
-                    outf.write(json.dumps(obj)+'\n')
-                    # tweets.append(out)
-        except:
-            pass
+                # get data at the end
+                outf.write(json.dumps(out)+'\n')
+                # tweets.append(out)
+    except:
+        pass
+
+    f.close()
+    outf.close()
 
     # save files
     with gzip.open(join(save_dir, 'users.'+save_file), 'wt') as outf:
-        for obj in uid2user.keys():
+        for obj in uid2user.values():
             outf.write(json.dumps(obj)+'\n')
     print(f'Completed {file.split("/")[-1]}\t{cnt}/{ln} lines!\t{int(time()-start)} seconds!')
     return
@@ -329,7 +337,7 @@ def test_multiprocessing():
     print("Total time: ",int(time()-start))
     return
 
-def set_multiprocessing(save_dir, modulo=None):
+def set_multiprocessing(save_dir, files:list, modulo=None):
     """Script for running multiprocessing on greatlakes slurm.
 
     Args:
@@ -342,7 +350,6 @@ def set_multiprocessing(save_dir, modulo=None):
     number_of_cores = int(os.environ['SLURM_CPUS_PER_TASK'])
     print(f'Number of CPU cores: {number_of_cores}')
 
-    files=get_twitter_files()
     if type(modulo)==str:
         modulo=int(modulo)
         files=[files[i] for i in range(len(files)) if i%10==modulo]
@@ -384,9 +391,14 @@ if __name__=='__main__':
     # test_multiprocessing()
     # print("Start job")
 
-    files = get_twitter_files()
+    # files = get_twitter_files()
+    file_dir = '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/raw-tweets-2020'
+    files = [join(file_dir,file) for file in sorted(os.listdir(file_dir))]
     save_dir='/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
-    set_multiprocessing(save_dir=save_dir, modulo=sys.argv[1])
+    if len(sys.argv)==2:
+        set_multiprocessing(save_dir=save_dir, files=files, modulo=sys.argv[1])
+    else:
+        set_multiprocessing(save_dir=save_dir, files=files)
 
     # collect_tweets(
     #     file=files[0],
