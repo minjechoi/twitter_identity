@@ -17,12 +17,27 @@ class TextDataset(Dataset):
                 uid,label,text=line.split('\t')
                 text = text.strip()
                 data.append((text,int(label)))
-        
+    
         self.data = data
         
         # compute class weights
         n_pos = sum([x[1] for x in data])
         self.weight = (len(data)-n_pos)/n_pos
+        return
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __len__(self):
+        return len(self.data)
+
+class PredictTextDataset(Dataset):
+    def __init__(self, data_file):
+        data = []
+        df = pd.read_csv(data_file,sep='\t',dtype={'user_id':str})
+        df[['text']] = df[['text']].fillna('None')
+
+        self.data = df.text.values
         return
 
     def __getitem__(self, index):
@@ -40,6 +55,7 @@ class DataModuleForIdentityClassification(LightningDataModule):
                 train_file: str,
                 test_file: str,
                 val_file: str,
+                predict_file: str,
                 max_length: int = 512,
                 train_batch_size: int = 8,
                 eval_batch_size: int = 16,
@@ -55,6 +71,7 @@ class DataModuleForIdentityClassification(LightningDataModule):
         parser.add_argument("--train_file", type=str)
         parser.add_argument("--val_file", type=str)
         parser.add_argument("--test_file", type=str)
+        parser.add_argument("--predict_file", type=str)
         parser.add_argument("--train_batch_size", type=int, default=8)
         parser.add_argument("--eval_batch_size", type=int, default=16)
         parser.add_argument("--num_workers", type=int, default=4)
@@ -63,15 +80,21 @@ class DataModuleForIdentityClassification(LightningDataModule):
 
     # sets up train, test & val datasets
     def setup(self, stage: str):
+        # stages are always one of 'fit', 'validate', 'test' or 'predict'
         # set datasets
-        self.datasets = {
-            'train': TextDataset(data_file=self.hparams.train_file),
-            'val': TextDataset(data_file=self.hparams.val_file),
-            'test': TextDataset(data_file=self.hparams.test_file),            
-        }
+        self.datasets = {}
         
-        # save class weights
-        self.weight = self.datasets['train'].weight
+        if stage=='predict':
+            self.datasets['predict'] = PredictTextDataset(data_file = self.hparams.predict_file)
+        
+        else:            
+            self.datasets = {
+                'train': TextDataset(data_file=self.hparams.train_file),
+                'val': TextDataset(data_file=self.hparams.val_file),
+                'test': TextDataset(data_file=self.hparams.test_file),            
+            }        
+            # save class weights
+            self.weight = self.datasets['train'].weight
         
         # load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -100,6 +123,32 @@ class DataModuleForIdentityClassification(LightningDataModule):
         outputs['labels'] = torch.LongTensor(labels)
         return outputs
 
+    def predict_collate_fn(self,texts):
+        
+        # texts2 = []
+        # for text in texts:
+        #     if len(text.strip())>0:
+        #         texts2.append(text)
+        #     else:
+        #         texts2.append('None')
+        # aggregate batch data
+        # max_ln=0
+        # print(texts)
+        # print('\n')
+        # print(texts[0])
+        # print(type(texts))
+        
+        outputs = self.tokenizer.batch_encode_plus(
+            texts,
+            max_length=self.hparams.max_length, 
+            padding='longest',
+            truncation='longest_first', 
+            return_length=False
+            )
+        for k,v in outputs.items():
+            outputs[k]=torch.tensor(v)
+        return outputs
+
     def train_dataloader(self):
         return DataLoader(self.datasets["train"], batch_size=self.hparams.train_batch_size, shuffle=True, num_workers=self.hparams.num_workers, collate_fn=self.collate_fn)
 
@@ -108,3 +157,6 @@ class DataModuleForIdentityClassification(LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.datasets["test"], batch_size=self.hparams.eval_batch_size, shuffle=False, num_workers=self.hparams.num_workers, collate_fn=self.collate_fn)
+
+    def predict_dataloader(self):
+        return DataLoader(self.datasets["predict"], batch_size=self.hparams.eval_batch_size, shuffle=False, num_workers=self.hparams.num_workers, collate_fn=self.predict_collate_fn)
