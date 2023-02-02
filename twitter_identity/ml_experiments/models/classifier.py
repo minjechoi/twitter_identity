@@ -174,6 +174,14 @@ class IdentityClassifier(LightningModule):
         log_dict['test_loss'] = round(np.mean(all_losses),3)
         self.log_dict(log_dict,prog_bar=False)
         return log_dict
+    
+    def predict_step(self, batch, batch_idx):
+        result = {}
+
+        outputs = self.forward(batch)
+        logits = outputs.logits.softmax(1)
+        scores = logits[:,1].reshape(-1).cpu().detach().tolist()
+        return scores
 
     def configure_optimizers(self):
         no_decay = ['bias', 'LayerNorm.weight']
