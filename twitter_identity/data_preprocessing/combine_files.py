@@ -372,7 +372,7 @@ def get_weekly_bins(timestamp):
     return int(np.floor(diff.days / 7))
 
 def get_tweet_activity_worker(user_file, tweet_file, save_dir, weeks_prior=8, weeks_post=12):
-    
+    # ran on greatlakes
     uid2week = {}
     df_uid = pd.read_csv(user_file,sep='\t',dtype={'user_id':str})
     for uid,dt in df_uid[['user_id','timestamp_treated']].values:
@@ -437,6 +437,8 @@ def get_tweet_activity(user_file, tweet_dir, save_dir, weeks_prior=9, weeks_post
     pool.starmap(get_tweet_activity_worker, inputs)
     # get_tweet_activity_worker(*inputs[100])
     return
+
+def 
 
 if __name__=='__main__':
     # merge the identity files
