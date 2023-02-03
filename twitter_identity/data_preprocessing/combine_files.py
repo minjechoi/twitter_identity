@@ -467,15 +467,15 @@ def get_active_tweets_by_identity_worker(activity_type, identity, user_id_file, 
                     w1 = uid2week[uid]
                     w2 = get_weekly_bins(obj['created_at'])
                     text = strip_tweet(obj['text'])
-                    uid2tweets[uid].append((w2-w1,obj['tweet_type'],text))
+                    uid2tweets[uid].append((w2-w1,tid,obj['tweet_type'],text))
                     all_tids.add(tid)
     
     # save to output
     out=[]
     for uid,V in tqdm(uid2tweets.items()):
-        for week_diff,tweet_type,text in V:
-            out.append((uid,week_diff,tweet_type,text))
-    df=pd.DataFrame(out,columns=['user_id','week_diff','tweet_type','text'])
+        for week_diff,tid,tweet_type,text in V:
+            out.append((uid,tid,week_diff,tweet_type,text))
+    df=pd.DataFrame(out,columns=['user_id','tweet_id','week_diff','tweet_type','text'])
     identity=identity.replace('/','')
     df.to_csv(join(save_dir,f'{activity_type}.{identity}.df.tsv.gz'),sep='\t',compression='gzip',index=False)    
     print(f'Finished {activity_type} {identity}')
@@ -580,12 +580,12 @@ if __name__=='__main__':
     # get_tweet_activity(user_file, tweet_dir, save_dir, 8, 12)
     
     # get tweets by identity
-    # user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
-    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update'
-    # save_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users'
-    # get_active_tweets_by_identity(user_id_file, load_dir, save_dir)
-
     user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
-    load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
-    save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_tweets.tsv.gz'
-    get_pre_change_tweets(user_id_file, load_dir, save_dir)
+    load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update'
+    save_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users/all_tweets/'
+    get_active_tweets_by_identity(user_id_file, load_dir, save_dir)
+
+    # user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
+    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
+    # save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_tweets.tsv.gz'
+    # get_pre_change_tweets(user_id_file, load_dir, save_dir)
