@@ -57,11 +57,17 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     data_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users/tweets'
-    all_identities = sorted(set([x.split('.')[1] for x in sorted(os.listdir(data_dir))]))
+    if args.identity==None:
+        all_identities = sorted(set([x.split('.')[1] for x in sorted(os.listdir(data_dir))]))
+    else:
+        all_identities = [args.identity]
+        
     for identity in all_identities:
         args.identity=identity
-        args.predict_file = f'/shared/3/projects/bio-change/data/interim/activities_by_treated_users/tweets/{args.activity_type}.{args.identity}.df.tsv.gz'
-        args.default_root_dir = '/shared/3/projects/bio-change/data/interim/activities_by_treated_users/predicted_scores/'
+        # args.predict_file = f'/shared/3/projects/bio-change/data/interim/activities_by_treated_users/tweets/{args.activity_type}.{args.identity}.df.tsv.gz'
+        args.predict_file = f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_{args.tweet_type}s.df.tsv.gz'
+        # args.default_root_dir = '/shared/3/projects/bio-change/data/interim/activities_by_treated_users/predicted_scores/'
+        args.default_root_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/identity-scores'
         # if args.save_file==None:
         args.save_file = f'{args.tweet_type}-classifier.{args.identity}.{args.activity_type}.txt'
         
