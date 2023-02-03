@@ -13,7 +13,7 @@ import pandas as pd
 import ujson as json
 from tqdm import tqdm
 
-# from twitter_identity.utils.utils import write_data_file_info, strip_tweet
+from twitter_identity.utils.utils import write_data_file_info, strip_tweet
 
 def merge_splitted_extracted_identities(load_dir,save_dir):
     """Merges the extracted identity shards
@@ -438,7 +438,117 @@ def get_tweet_activity(user_file, tweet_dir, save_dir, weeks_prior=9, weeks_post
     # get_tweet_activity_worker(*inputs[100])
     return
 
-def 
+def get_active_tweets_by_identity_worker(activity_type, identity, user_id_file, load_dir, save_dir):
+    # load valid users
+    print(f'{activity_type} {identity}')
+    uid2week = {}
+    with open(user_id_file) as f:
+        for line in f:
+            id_,uid,timestamp,phrase = line.split('\t')
+            if id_==identity:
+                uid2week[uid]=get_weekly_bins(timestamp)
+    
+    # iterate through all files and record text as well as week differences
+    uid2tweets = {uid:[] for uid in uid2week.keys()} 
+    all_tids = set()
+    files = [join(load_dir,activity_type,file) for file in sorted(os.listdir(join(load_dir,activity_type)))]
+    for file in tqdm(files):
+        with gzip.open(file,'rt') as f:
+            for line in f:
+                obj=json.loads(line)
+                tid = obj['id']
+                if tid in all_tids:
+                    continue
+                if activity_type=='activities_made':
+                    uid=obj['user_id']
+                elif activity_type=='activities_origin':
+                    uid=obj['user_id_origin']
+                if uid in uid2tweets:
+                    w1 = uid2week[uid]
+                    w2 = get_weekly_bins(obj['created_at'])
+                    text = strip_tweet(obj['text'])
+                    uid2tweets[uid].append((w2-w1,obj['tweet_type'],text))
+                    all_tids.add(tid)
+    
+    # save to output
+    out=[]
+    for uid,V in tqdm(uid2tweets.items()):
+        for week_diff,tweet_type,text in V:
+            out.append((uid,week_diff,tweet_type,text))
+    df=pd.DataFrame(out,columns=['user_id','week_diff','tweet_type','text'])
+    identity=identity.replace('/','')
+    df.to_csv(join(save_dir,f'{activity_type}.{identity}.df.tsv.gz'),sep='\t',compression='gzip',index=False)    
+    print(f'Finished {activity_type} {identity}')
+    return
+
+def get_active_tweets_by_identity(user_id_file, load_dir, save_dir):
+    activity_types = ['activities_made','activities_origin']
+    identities = []
+    with open(user_id_file) as f:
+        for line in f:
+            id_,uid,timestamp,phrase = line.split('\t')
+            identities.append(id_)
+    identities = sorted(set(identities))
+
+    inputs = []
+    for typ in activity_types:
+        for id_ in identities:
+            inputs.append((typ,id_,user_id_file,load_dir,save_dir))
+
+    pool = Pool(20)
+    pool.starmap(get_active_tweets_by_identity_worker, inputs)
+    write_data_file_info(__file__, get_active_tweets_by_identity.__name__, save_dir, [user_id_file,load_dir])
+    # get_active_tweets_by_identity_worker(*inputs[10])
+    return
+
+def get_pre_change_tweets(user_id_file, load_dir, save_file):
+    """Gathers all the activities that happened before the profile change
+
+    Args:
+        user_id_file (_type_): _description_
+        load_dir (_type_): _description_
+        save_dir (_type_): _description_
+    """
+    # get all uids and their profile changes
+    uid2week = {}
+    with open(user_id_file) as f:
+        for line in f:
+            id_,uid,timestamp,phrase = line.split('\t')
+            uid2week[uid]=get_weekly_bins(timestamp)
+    
+    # load all tweets and find the ones where it was -4 ~ -1 weeks relative to the identity change
+        # iterate through all files and record text as well as week differences
+    uid2tweets = {uid:[] for uid in uid2week.keys()} 
+    all_tids = set()
+    files = [join(load_dir,file) for file in sorted(os.listdir(load_dir))]
+    # files = files[200:250]
+    for file in tqdm(files):
+        with gzip.open(file,'rt') as f:
+            for line in f:
+                obj=json.loads(line)
+                tid = obj['id']
+                if tid in all_tids:
+                    continue
+                uid=obj['user_id']
+                if uid in uid2tweets:
+                    w1 = uid2week[uid]
+                    w2 = get_weekly_bins(obj['created_at'])
+                    week_diff = w2-w1
+                    if (week_diff>=-4) and (week_diff<=-1):
+                        text = strip_tweet(obj['text'])
+                        uid2tweets[uid].append((week_diff,obj['tweet_type'],text))
+                        all_tids.add(tid)
+    
+    # save
+    with gzip.open(save_file,'wt') as f:
+        for uid,V in tqdm(uid2tweets.items()):
+            for v in V:
+                f.write(f'{uid}\t{v[0]}\t{v[1]}\t{v[2]}\n')
+    write_data_file_info(__file__, get_pre_change_tweets.__name__,save_file, [user_id_file,load_dir])      
+    return
+
+
+    
 
 if __name__=='__main__':
     # merge the identity files
@@ -464,7 +574,18 @@ if __name__=='__main__':
     # merge_user_files(user_dir, save_dir)
     
     # gets activities of valid users ranged by weeks since profile update
-    user_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
-    tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
-    save_dir= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/activity_around_profile_update'
-    get_tweet_activity(user_file, tweet_dir, save_dir, 8, 12)
+    # user_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
+    # tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
+    # save_dir= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/activity_around_profile_update'
+    # get_tweet_activity(user_file, tweet_dir, save_dir, 8, 12)
+    
+    # get tweets by identity
+    # user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
+    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update'
+    # save_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users'
+    # get_active_tweets_by_identity(user_id_file, load_dir, save_dir)
+
+    user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
+    load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
+    save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_tweets.tsv.gz'
+    get_pre_change_tweets(user_id_file, load_dir, save_dir)
