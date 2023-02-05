@@ -371,7 +371,7 @@ def get_weekly_bins(timestamp):
         sys.exit(0)
     return int(np.floor(diff.days / 7))
 
-def get_tweet_activity_worker(user_file, tweet_file, save_dir, weeks_prior=8, weeks_post=12):
+def get_tweet_activity_worker(user_file, tweet_dir, save_dir, weeks_prior=8, weeks_post=12):
     # ran on greatlakes
     uid2week = {}
     df_uid = pd.read_csv(user_file,sep='\t',dtype={'user_id':str})
@@ -509,12 +509,11 @@ def get_pre_change_tweets(user_id_file, load_dir, save_file):
         load_dir (_type_): _description_
         save_dir (_type_): _description_
     """
-    # get all uids and their profile changes
+    # get all uids and the week of their profile change
     uid2week = {}
-    with open(user_id_file) as f:
-        for line in f:
-            id_,uid,timestamp,phrase = line.split('\t')
-            uid2week[uid]=get_weekly_bins(timestamp)
+    df_uid=pd.read_csv(user_id_file,sep='\t',dtype={'user_id':str})
+    for uid,timestamp in tqdm(df_uid[['user_id','timestamp_treated']].values):
+        uid2week[uid]=get_weekly_bins(timestamp)
     
     # load all tweets and find the ones where it was -4 ~ -1 weeks relative to the identity change
         # iterate through all files and record text as well as week differences
@@ -540,10 +539,13 @@ def get_pre_change_tweets(user_id_file, load_dir, save_file):
                         all_tids.add(tid)
     
     # save
-    with gzip.open(save_file,'wt') as f:
-        for uid,V in tqdm(uid2tweets.items()):
-            for v in V:
-                f.write(f'{uid}\t{v[0]}\t{v[1]}\t{v[2]}\n')
+    out = []
+    
+    for uid,V in tqdm(uid2tweets.items()):
+        for v in V:
+            out.append((uid,v[0],v[1],v[2]))
+    df_out=pd.DataFrame(out,columns=['user_id','week_diff','tweet_type','text'])
+    df_out.to_csv(save_file,sep='\t',index=False)
     write_data_file_info(__file__, get_pre_change_tweets.__name__,save_file, [user_id_file,load_dir])      
     return
 
@@ -580,12 +582,13 @@ if __name__=='__main__':
     # get_tweet_activity(user_file, tweet_dir, save_dir, 8, 12)
     
     # get tweets by identity
-    user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
-    load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update'
-    save_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users/all_tweets/'
-    get_active_tweets_by_identity(user_id_file, load_dir, save_dir)
-
     # user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
-    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
-    # save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_tweets.tsv.gz'
-    # get_pre_change_tweets(user_id_file, load_dir, save_dir)
+    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update'
+    # save_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users/all_tweets/'
+    # get_active_tweets_by_identity(user_id_file, load_dir, save_dir)
+
+    # user_id_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
+    user_id_file= '/shared/3/projects/bio-change/data/interim/propensity-score-matching/description_change_features.df.tsv'
+    load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
+    save_file='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_activities.df.tsv.gz'
+    get_pre_change_tweets(user_id_file, load_dir, save_file)
