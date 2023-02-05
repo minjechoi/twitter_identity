@@ -501,7 +501,7 @@ def get_active_tweets_by_identity(user_id_file, load_dir, save_dir):
     # get_active_tweets_by_identity_worker(*inputs[10])
     return
 
-def get_pre_change_tweets(user_id_file, load_dir, save_file):
+def get_pre_change_tweets(user_id_file, load_dir, save_dir):
     """Gathers all the activities that happened before the profile change
 
     Args:
@@ -544,9 +544,14 @@ def get_pre_change_tweets(user_id_file, load_dir, save_file):
     for uid,V in tqdm(uid2tweets.items()):
         for v in V:
             out.append((uid,v[0],v[1],v[2]))
+    
     df_out=pd.DataFrame(out,columns=['user_id','week_diff','tweet_type','text'])
-    df_out.to_csv(save_file,sep='\t',index=False)
-    write_data_file_info(__file__, get_pre_change_tweets.__name__,save_file, [user_id_file,load_dir])      
+    df1=df_out[(df_out.tweet_type=='reply')|(df_out.tweet_type=='mention')|(df_out.tweet_type=='tweet')]
+    df1.to_csv(join(save_dir,'all_past_tweets.df.tsv.gz'),sep='\t',index=False)
+    df2=df_out[(df_out.tweet_type=='retweet')|(df_out.tweet_type=='quote')]
+    df2.to_csv(join(save_dir,'all_past_retweets.df.tsv.gz'),sep='\t',index=False)
+    
+    write_data_file_info(__file__, get_pre_change_tweets.__name__,save_dir, [user_id_file,load_dir])      
     return
 
 
@@ -590,5 +595,5 @@ if __name__=='__main__':
     # user_id_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
     user_id_file= '/shared/3/projects/bio-change/data/interim/propensity-score-matching/description_change_features.df.tsv'
     load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
-    save_file='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/all_past_activities.df.tsv.gz'
-    get_pre_change_tweets(user_id_file, load_dir, save_file)
+    save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/'
+    get_pre_change_tweets(user_id_file, load_dir, save_dir)
