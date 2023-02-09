@@ -32,12 +32,11 @@ class TextDataset(Dataset):
         return len(self.data)
 
 class PredictTextDataset(Dataset):
-    def __init__(self, data_file):
+    def __init__(self, data_file, col_name='text'):
         data = []
         df = pd.read_csv(data_file,sep='\t',dtype={'user_id':str})
-        df[['text']] = df[['text']].fillna('None')
-
-        self.data = df.text.values
+        df[[col_name]] = df[[col_name]].fillna('None')
+        self.data = df[col_name].values
         return
 
     def __getitem__(self, index):
@@ -56,6 +55,7 @@ class DataModuleForIdentityClassification(LightningDataModule):
                 test_file: str,
                 val_file: str,
                 predict_file: str,
+                col_name: str='text',
                 max_length: int = 512,
                 train_batch_size: int = 8,
                 eval_batch_size: int = 16,
@@ -72,6 +72,7 @@ class DataModuleForIdentityClassification(LightningDataModule):
         parser.add_argument("--val_file", type=str)
         parser.add_argument("--test_file", type=str)
         parser.add_argument("--predict_file", type=str)
+        parser.add_argument("--col_name", type=str, default='text')
         parser.add_argument("--train_batch_size", type=int, default=8)
         parser.add_argument("--eval_batch_size", type=int, default=16)
         parser.add_argument("--num_workers", type=int, default=4)
@@ -85,7 +86,9 @@ class DataModuleForIdentityClassification(LightningDataModule):
         self.datasets = {}
         
         if stage=='predict':
-            self.datasets['predict'] = PredictTextDataset(data_file = self.hparams.predict_file)
+            self.datasets['predict'] = PredictTextDataset(
+                data_file = self.hparams.predict_file,
+                col_name=self.hparams.col_name)
         
         else:            
             self.datasets = {
