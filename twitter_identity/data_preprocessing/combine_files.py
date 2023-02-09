@@ -7,6 +7,7 @@ import gzip
 import re
 from multiprocessing import Pool
 from random import sample, shuffle
+from time import time
 
 from sklearn.utils import resample
 import pandas as pd
@@ -371,16 +372,14 @@ def get_weekly_bins(timestamp):
         sys.exit(0)
     return int(np.floor(diff.days / 7))
 
-def get_tweet_activity_worker(user_file, tweet_dir, save_dir, weeks_prior=8, weeks_post=12):
+def get_tweet_activity_worker(uid2week, tweet_file, save_file, weeks_prior=9, weeks_post=13):
     # ran on greatlakes
-    uid2week = {}
-    df_uid = pd.read_csv(user_file,sep='\t',dtype={'user_id':str})
-    for uid,dt in df_uid[['user_id','timestamp_treated']].values:
-        uid2week[uid] = get_weekly_bins(dt)
+    # ran on taco
+    
+    start = time()
 
     uid2tweets = {uid:[] for uid in uid2week.keys()} # when uid posted something or responded to someone
     uid2origins = {uid:[] for uid in uid2week.keys()} # when uid was the origin of someone's response
-    files = sorted(os.listdir(tweet_dir))
     
     cnt=0
     all_tids = set()
@@ -389,7 +388,7 @@ def get_tweet_activity_worker(user_file, tweet_dir, save_dir, weeks_prior=8, wee
             obj=json.loads(line)
             tid = obj['id']
             if tid in all_tids:
-                continue
+                continue # one tweet is only considered once
             if 'user_id' in obj:
                 uid=obj['user_id']
                 if uid in uid2tweets:
@@ -414,44 +413,51 @@ def get_tweet_activity_worker(user_file, tweet_dir, save_dir, weeks_prior=8, wee
     
     # write tweets
     save_file = tweet_file.split('/')[-1].replace('tweets.','')
-    with gzip.open(join(save_dir,f'activities_made.{save_file}'),'wt') as f:
-        for uid,V in uid2tweets.items():
+    print(f'Saving {save_file}!')
+    with gzip.open(join(save_dir,'activities_made',save_file),'wt') as f:
+        for uid,V in tqdm(uid2tweets.items()):
             for obj in V:
                 f.write(json.dumps(obj)+'\n')
                 
-    with gzip.open(join(save_dir,f'activities_origin.{save_file}'),'wt') as f:
-        for uid,V in uid2origins.items():
+    with gzip.open(join(save_dir,'activities_origin',save_file),'wt') as f:
+        for uid,V in tqdm(uid2origins.items()):
             for obj in V:
                 f.write(json.dumps(obj)+'\n')
-    print(f'{len(all_tids)} tweets for {save_file}')
+    print(f'{len(all_tids)} tweets for {save_file} {int(time()-start)}')
     # write_data_file_info(__file__, get_tweet_activity.__name__, save_dir, [user_file,tweet_dir])
     return
     
-def get_tweet_activity(user_file, tweet_dir, save_dir, weeks_prior=9, weeks_post=12):
+def get_tweet_activity(user_data_dir, tweet_dir, save_dir, weeks_prior=9, weeks_post=12):
+    # get users and their dates
+    df1=pd.DataFrame()
+    for cat in os.listdir(user_data_dir):
+        files=[file for file in os.listdir(join(user_data_dir,cat)) if file.startswith('all_covariates')]
+        for file in files:
+            df2=pd.read_csv(join(user_data_dir,cat,file),sep='\t',dtype={'user_id':str})
+            df1=pd.concat([df1,df2],axis=0)
+    df1=df1[['user_id','week_treated']].drop_duplicates()
+    uid2week={uid:wt for uid,wt in df1.values}
+    
+    # get files to load
     files = sorted([join(tweet_dir,file) for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
     inputs = []
     for tweet_file in files:
-        inputs.append((user_file, tweet_file, save_dir, weeks_prior, weeks_post))
+        inputs.append((uid2week, tweet_file, save_dir, weeks_prior, weeks_post))
         
-    pool = Pool(32)
+    pool = Pool(12)
     pool.starmap(get_tweet_activity_worker, inputs)
+    write_data_file_info(__file__, get_tweet_activity.__name__, save_dir, [user_data_dir,tweet_dir])
     # get_tweet_activity_worker(*inputs[100])
     return
 
-def get_active_tweets_by_identity_worker(activity_type, identity, user_id_file, load_dir, save_dir):
+def get_active_tweets_by_identity_worker(uid2week, activity_type, tweet_data_dir, save_file):
     # load valid users
-    print(f'{activity_type} {identity}')
-    uid2week = {}
-    with open(user_id_file) as f:
-        for line in f:
-            id_,uid,timestamp,phrase = line.split('\t')
-            if id_==identity:
-                uid2week[uid]=get_weekly_bins(timestamp)
+    print(f'Starting {save_file}')
     
     # iterate through all files and record text as well as week differences
     uid2tweets = {uid:[] for uid in uid2week.keys()} 
     all_tids = set()
-    files = [join(load_dir,activity_type,file) for file in sorted(os.listdir(join(load_dir,activity_type)))]
+    files = [join(tweet_data_dir,activity_type,file) for file in sorted(os.listdir(join(tweet_data_dir,activity_type)))]
     for file in tqdm(files):
         with gzip.open(file,'rt') as f:
             for line in f:
@@ -466,7 +472,7 @@ def get_active_tweets_by_identity_worker(activity_type, identity, user_id_file, 
                 if uid in uid2tweets:
                     w1 = uid2week[uid]
                     w2 = get_weekly_bins(obj['created_at'])
-                    text = strip_tweet(obj['text'])
+                    text = strip_tweet(obj['text'],url='replace')
                     uid2tweets[uid].append((w2-w1,tid,obj['tweet_type'],text))
                     all_tids.add(tid)
     
@@ -476,28 +482,42 @@ def get_active_tweets_by_identity_worker(activity_type, identity, user_id_file, 
         for week_diff,tid,tweet_type,text in V:
             out.append((uid,tid,week_diff,tweet_type,text))
     df=pd.DataFrame(out,columns=['user_id','tweet_id','week_diff','tweet_type','text'])
-    identity=identity.replace('/','')
-    df.to_csv(join(save_dir,f'{activity_type}.{identity}.df.tsv.gz'),sep='\t',compression='gzip',index=False)    
-    print(f'Finished {activity_type} {identity}')
+    df.to_csv(save_file,sep='\t',compression='gzip',index=False)    
+    print(f'Finished {activity_type} {save_file}')
     return
 
-def get_active_tweets_by_identity(user_id_file, load_dir, save_dir):
-    activity_types = ['activities_made','activities_origin']
-    identities = []
-    with open(user_id_file) as f:
-        for line in f:
-            id_,uid,timestamp,phrase = line.split('\t')
-            identities.append(id_)
-    identities = sorted(set(identities))
+def get_active_tweets_by_identity(user_data_dir, tweet_data_dir, save_dir):
+    """For each identity, stores the tweets by treated and control users into a compressed dataframe
+
+    Args:
+        user_id_file (_type_): _description_
+        load_dir (_type_): _description_
+        save_dir (_type_): _description_
+    """
+    
+    # get identities
+    identities = sorted([file.split('.')[1] for file in os.listdir(join(user_data_dir,'with_tweet_identity')) if file.startswith('all_covariates')])
 
     inputs = []
-    for typ in activity_types:
-        for id_ in identities:
-            inputs.append((typ,id_,user_id_file,load_dir,save_dir))
-
-    pool = Pool(20)
+    
+    for identity in identities:
+        # get users and their dates
+        df1=pd.DataFrame()
+        for cat in os.listdir(user_data_dir):
+            df2=pd.read_csv(join(user_data_dir,cat,f'all_covariates.{identity}.df.tsv'),sep='\t',dtype={'user_id':str})
+            df1=pd.concat([df1,df2],axis=0)
+        df1=df1[['user_id','week_treated']].drop_duplicates()
+        uid2week={uid:wt for uid,wt in df1.values}
+        
+        for activity_type in ['activities_made','activities_origin']:
+            save_file = join(save_dir,f'{activity_type}.{identity}.df.tsv.gz')
+            
+            inputs.append((uid2week, activity_type, tweet_data_dir, save_file))
+    
+            
+    pool = Pool(12)
     pool.starmap(get_active_tweets_by_identity_worker, inputs)
-    write_data_file_info(__file__, get_active_tweets_by_identity.__name__, save_dir, [user_id_file,load_dir])
+    write_data_file_info(__file__, get_active_tweets_by_identity.__name__, save_dir, [user_data_dir, tweet_data_dir])
     # get_active_tweets_by_identity_worker(*inputs[10])
     return
 
@@ -514,6 +534,7 @@ def get_pre_change_tweets(user_id_file, load_dir, save_dir):
     df_uid=pd.read_csv(user_id_file,sep='\t',dtype={'user_id':str})
     for uid,timestamp in tqdm(df_uid[['user_id','timestamp_treated']].values):
         uid2week[uid]=get_weekly_bins(timestamp)
+    print(len(uid2week),' users!')
     
     # load all tweets and find the ones where it was -4 ~ -1 weeks relative to the identity change
         # iterate through all files and record text as well as week differences
@@ -541,9 +562,13 @@ def get_pre_change_tweets(user_id_file, load_dir, save_dir):
     # save
     out = []
     
+    cnt=0
     for uid,V in tqdm(uid2tweets.items()):
-        for v in V:
-            out.append((uid,v[0],v[1],v[2]))
+        if len(V):
+            cnt+=1
+            for v in V:
+                out.append((uid,v[0],v[1],v[2]))
+    print(f'{cnt}/{len(uid2tweets)} nonempty users!')
     
     df_out=pd.DataFrame(out,columns=['user_id','week_diff','tweet_type','text'])
     df1=df_out[(df_out.tweet_type=='reply')|(df_out.tweet_type=='mention')|(df_out.tweet_type=='tweet')]
@@ -554,8 +579,21 @@ def get_pre_change_tweets(user_id_file, load_dir, save_dir):
     write_data_file_info(__file__, get_pre_change_tweets.__name__,save_dir, [user_id_file,load_dir])      
     return
 
-
+def combine_matched_users(load_dir, save_file):
+    """
+    Combines the CEM-matched treated and control pairs
+    """
+    df=pd.DataFrame()
+    for file in sorted(os.listdir(load_dir)):
+        if file.endswith('.df.tsv'):
+            df2=pd.read_csv(join(load_dir,file),sep='\t',dtype={'user_id':str})
+            df2['identity']=file.split('.')[0]
+            df=pd.concat([df,df2],axis=0)
     
+    df.to_csv(save_file, sep='\t', index=False)
+    write_data_file_info(__file__, combine_matched_users.__name__, save_file, [load_dir])
+    return
+
 
 if __name__=='__main__':
     # merge the identity files
@@ -581,19 +619,23 @@ if __name__=='__main__':
     # merge_user_files(user_dir, save_dir)
     
     # gets activities of valid users ranged by weeks since profile update
-    # user_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
-    # tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
-    # save_dir= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/activity_around_profile_update'
-    # get_tweet_activity(user_file, tweet_dir, save_dir, 8, 12)
+    # user_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity'
+    # tweet_dir = '/shared/3/projects/bio-change/data/raw/treated-control-tweets/tweets'
+    # save_dir= '/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/activity_around_profile_update'
+    # get_tweet_activity(user_data_dir, tweet_dir, save_dir, 13, 13)
     
     # get tweets by identity
-    # user_id_file='/shared/3/projects/bio-change/data/interim/treated-control-users/all_treated_users.tsv'
-    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update'
-    # save_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users/all_tweets/'
-    # get_active_tweets_by_identity(user_id_file, load_dir, save_dir)
+    user_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity'
+    tweet_data_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/activity_around_profile_update'
+    save_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
+    get_active_tweets_by_identity(user_data_dir, tweet_data_dir, save_dir)
 
     # user_id_file= '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/description_features.df.tsv'
-    user_id_file= '/shared/3/projects/bio-change/data/interim/propensity-score-matching/description_change_features.df.tsv'
-    load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
-    save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/'
-    get_pre_change_tweets(user_id_file, load_dir, save_dir)
+    # user_id_file= '/shared/3/projects/bio-change/data/interim/propensity-score-matching/description_change_features.df.tsv'
+    # load_dir='/shared/3/projects/bio-change/data/raw/treated-control-tweets/activity_around_profile_update/activities_made'
+    # save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/'
+    # get_pre_change_tweets(user_id_file, load_dir, save_dir)
+
+    # load_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/cem'
+    # save_file='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/cem_matches.df.tsv'
+    # combine_matched_users(load_dir, save_file)
