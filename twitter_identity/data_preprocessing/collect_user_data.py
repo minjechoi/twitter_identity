@@ -1,6 +1,7 @@
 import os
 from os.path import join
 import gzip
+import re
 from random import sample
 from collections import Counter
 from multiprocessing import Pool
@@ -12,7 +13,7 @@ import ujson as json
 import pandas as pd
 from dateutil.parser import parse
 
-from twitter_identity.utils.utils import write_data_file_info
+from twitter_identity.utils.utils import write_data_file_info, get_weekly_bins, strip_tweet, week_diff_to_month_diff
 
 def get_all_uids(input_files, output_file):
     
@@ -350,6 +351,56 @@ def get_treated_users(description_file, extracted_file, save_dir):
     return    
     
 
+def get_user_reply_data_for_classifier(user_identity_file, user_name_file, data_file, save_file):
+    uid2week={}
+    uid2data={}
+    uid2identity={}
+    # get list of all users to consider
+    df=pd.read_csv(user_identity_file,sep='\t',dtype={'user_id':str})
+    for identity,uid,ts in df.values:
+        uid2week[uid]=get_weekly_bins(ts)
+        uid2identity[uid]=identity
+
+    # get files to map user name to id    
+    username2uid={}
+    with open(user_name_file) as f:
+        for ln,line in enumerate(f):
+            obj=json.loads(line)
+            name=obj['username'].lower()
+            uid=obj['id']
+            if uid in uid2identity:
+                username2uid[name]=uid
+                
+    out = []
+    with open(data_file) as f:
+        for line in f:
+            flag=False
+            obj=json.loads(line)
+            text=obj['text']
+            ts=obj['created_at'] 
+            if 'in_reply_to_user_id' in obj:
+                uid=obj['in_reply_to_user_id']
+                if uid in uid2identity:
+                    flag=True
+            else:
+                names = re.findall(r'@(\w+)',text.lower())
+                for name in names:
+                    if name in username2uid:
+                        uid = username2uid[name]
+                        flag=True
+                        break
+            if flag:
+                text=strip_tweet(text)
+                identity=uid2identity[uid]
+                week_tweet = get_weekly_bins(ts)
+                wd=week_tweet-uid2week[uid]
+                md = week_diff_to_month_diff(wd)
+                out.append((uid,identity,wd,md,text))
+    df2=pd.DataFrame(out,columns=['user_id','identity','week_difference','month_difference','text'])
+    df2.to_csv(save_file,sep='\t',index=False)
+    write_data_file_info(__file__, get_user_reply_data_for_classifier.__name__, save_file, [data_file,user_identity_file,user_name_file])
+    return
+
 
 if __name__=='__main__':
     # get all uids from description files
@@ -387,8 +438,15 @@ if __name__=='__main__':
     #     max_users=200000
     # )
     
-    get_treated_users(
-        description_file='/shared/3/projects/bio-change/data/interim/description_changes/filtered/description_changes_1plus_changes.tsv.gz', 
-        extracted_file='/shared/3/projects/bio-change/data/interim/description_changes/extracted/description_changes.1plus_changes.all_identities.json.gz', 
-        save_dir='/shared/3/projects/bio-change/data/interim/treated-control-users'
-    )
+    # get_treated_users(
+    #     description_file='/shared/3/projects/bio-change/data/interim/description_changes/filtered/description_changes_1plus_changes.tsv.gz', 
+    #     extracted_file='/shared/3/projects/bio-change/data/interim/description_changes/extracted/description_changes.1plus_changes.all_identities.json.gz', 
+    #     save_dir='/shared/3/projects/bio-change/data/interim/treated-control-users'
+    # )
+    
+    user_identity_file = '/shared/3/projects/bio-change/data/interim/1000-samples-per-identity/sampled_uids.df.tsv'
+    user_name_file = '/shared/3/projects/bio-change/data/interim/1000-samples-per-identity/users.json'
+    data_file = '/shared/3/projects/bio-change/data/interim/1000-samples-per-identity/data.json'
+    save_file = '/shared/3/projects/bio-change/data/interim/1000-samples-per-identity/replies.df.tsv'
+
+    get_user_reply_data_for_classifier(user_identity_file, user_name_file, data_file, save_file)
