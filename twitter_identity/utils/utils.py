@@ -97,6 +97,29 @@ def test_write_data_file_info():
     print(__file__)
     return
 
+def week_diff_to_month_diff(week):
+    """Switches week difference to month difference. Month difference here is actually 4-weeks
+
+    Args:
+        week (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    if week==0:
+        return 0
+    elif week>0:
+        return np.ceil(week/4)
+    elif week<0:
+        return np.floor(week/4)
+
+def get_identities():
+    """Simply returns the list of identities
+    """
+    user_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity'
+    identities = sorted([file.split('.')[1] for file in os.listdir(os.path.join(user_data_dir,'with_tweet_identity')) if file.startswith('all_covariates')])
+    return identities
+
 if __name__=='__main__':
     # get_weekly_bins()
     # print(test_write_data_file_info())
