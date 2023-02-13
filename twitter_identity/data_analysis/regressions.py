@@ -233,11 +233,7 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     # optional-add month values if time unit is month
     if time_unit=='month':
         df_tweet['month_diff']=[int(week_diff_to_month_diff(x)) for x in df_tweet.week_diff]
-    # add offensiveness scores sent by others
-    with open(join(offensive_score_dir,f'activities_origin.{identity}.{tweet_type}.txt')) as f:
-        scores=[float(x) for x in f.readlines()]
-    df_tweet['score']=scores        
-    
+        
     # get placeholder for each user and each week difference
     df_time=df_tweet[[time_unit_col]].drop_duplicates().sort_values(by=[time_unit_col])
     df1 = df_cov.merge(df_time,how='cross')
@@ -245,14 +241,17 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
         df1=df1[(df1.month_diff>=-1)&(df1.month_diff<=3)]
     if time_unit=='week':
         df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=12)]
-    
+        
     # add offensiveness scores by others to dataframe    
+    with open(join(offensive_score_dir,f'activities_origin.{identity}.{tweet_type}.txt')) as f:
+        scores=[float(x) for x in f.readlines()]
+    df_tweet['score']=scores        
     df_tweet=df_tweet[['user_id',time_unit_col,'score']]
     if agg=='mean':
         df_tweet=df_tweet.groupby(['user_id',time_unit_col]).mean().reset_index()
-    elif agg=='mean':
+    elif agg=='max':
         df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
-    if agg=='mean':
+    if agg=='count':
         df_tweet=df_tweet[df_tweet.score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
     df2=df1.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
 
@@ -271,9 +270,9 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     df_tweet=df_tweet[['user_id',time_unit_col,'offensive_ego_score']]
     if agg=='mean':
         df_tweet=df_tweet.groupby(['user_id',time_unit_col]).mean().reset_index()
-    elif agg=='mean':
+    elif agg=='max':
         df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
-    if agg=='mean':
+    if agg=='count':
         df_tweet=df_tweet[df_tweet.offensive_ego_score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
     df4=df3.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
     
