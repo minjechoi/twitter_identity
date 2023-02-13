@@ -2,6 +2,7 @@ import os
 from os.path import join
 from multiprocessing import Pool
 
+import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import StandardScaler
@@ -9,8 +10,8 @@ from scipy.stats import chi2
 
 from twitter_identity.utils.utils import week_diff_to_month_diff, get_identities
 
-def run_regression_language_change_worker(time_unit, agg, identity, tweet_type):
-    save_dir=f'/shared/3/projects/bio-change/data/interim/rq-language-change-post-identity/results-{tweet_type}-{time_unit}-{agg}'
+def run_regression_language_change_worker(time_unit, agg, est, identity, tweet_type):
+    save_dir=f'/shared/3/projects/bio-change/data/interim/rq-language-change-post-identity/results-{tweet_type}-{time_unit}-{agg}-{est}'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
@@ -37,29 +38,37 @@ def run_regression_language_change_worker(time_unit, agg, identity, tweet_type):
         df_tweet=df_tweet[df_tweet.tweet_type=='tweet']
     
     # get placeholder for each user and each week difference
-    df_time=df_tweet[f'{time_unit}_diff'].drop_duplicates().sort_values(by=[f'{time_unit}_diff'])
+    df_time=df_tweet[[f'{time_unit}_diff']].drop_duplicates().sort_values(by=[f'{time_unit}_diff'])
     df1 = df_cov.merge(df_time,how='cross')
     if time_unit=='month':
-        df1=df1[(df1.month_diff>=-1)&(df1.week_diff<=3)]
+        df1=df1[(df1.month_diff>=-1)&(df1.month_diff<=3)]
     if time_unit=='week':
         df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=12)]
     
     # get counts of tweets per week to add as control
-    df_cnt=df_tweet.groupby(['user_id',f'{time_unit}_diff']).count().reset_index()[['user_id','f{time_unit}_diff','score']]
+    df_cnt=df_tweet.groupby(['user_id',f'{time_unit}_diff']).count().reset_index()[['user_id',f'{time_unit}_diff','score']]
     df_cnt=df_cnt.rename(columns = {'score':'activity_count'})
     df2=df1.merge(df_cnt,on=['user_id',f'{time_unit}_diff'],how='left').fillna(0)
 
     # get outcome variable
     if agg=='mean':
-        df_score=df_tweet.groupby(['user_id',f'{time_unit}_diff']).mean().reset_index()[['user_id','f{time_unit}_diff','score']]
+        df_score=df_tweet.groupby(['user_id',f'{time_unit}_diff']).mean().reset_index()[['user_id',f'{time_unit}_diff','score']]
     elif agg=='max':
-        df_score=df_tweet.groupby(['user_id',f'{time_unit}_diff']).max().reset_index()[['user_id','f{time_unit}_diff','score']]
+        df_score=df_tweet.groupby(['user_id',f'{time_unit}_diff']).max().reset_index()[['user_id',f'{time_unit}_diff','score']]
     elif agg=='count':
         df_score = df_tweet[df_tweet.score>=0.5]
         df_score=df_score.groupby(['user_id',f'{time_unit}_diff']).count().reset_index()[['user_id',f'{time_unit}_diff','score']]
-    
+        
     # merge scores to existing table
     df3=df2.merge(df_score,on=['user_id',f'{time_unit}_diff'],how='left').fillna(0)
+    
+    if est=='rel':
+        # change to log variables so that we can look into percentage change instead
+        if agg in ['mean','max']:
+            df3=df3[df3.score>0]
+        elif agg=='count':
+            df3['score']=[max(x,0.5) for x in df3['score']]
+        df3['score']=[np.log(x) for x in df3['score']]
     
     # remove time unit corresponding to zero - needed because we want to focus more on effects after stabilization
     df3=df3[df3[f'{time_unit}_diff']!=0]
@@ -204,7 +213,7 @@ def run_regression_activity_change_worker(time_period, identity, tweet_type):
 
     return
 
-def run_regression_offensive_change_worker(time_period, identity, tweet_type):
+def run_regression_offensive_change_worker(time_unit, identity, tweet_type):
     setting='with_tweet_identity'
     # get treated / control users
     df_cov=pd.read_csv(f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/{setting}/all_covariates.{identity}.df.tsv',
@@ -246,14 +255,18 @@ def run_regression_offensive_change_worker(time_period, identity, tweet_type):
 
     return
 
-def run_regression(time_period):
+def run_regression():
     identities = get_identities()
     inputs = []
     for identity in identities:
-        # for tweet_type in ['all']:
-        for tweet_type in ['tweet','retweet']:
-            for agg in ['count','mean','max']:
-                inputs.append((time_period, agg, identity, tweet_type))
+        # for time_unit in ['month','week']:
+        for time_unit in ['month']:
+            # for tweet_type in ['tweet','retweet']:
+            for tweet_type in ['retweet']:
+                for est in ['rel']:
+                    for agg in ['mean']:
+                    # for agg in ['count','mean','max']:
+                        inputs.append((time_unit, agg, est, identity, tweet_type))
             # time_unit, agg, identity, tweet_type
             
     pool = Pool(12)
