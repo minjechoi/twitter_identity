@@ -253,6 +253,8 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     
     # get offensiveness scores of tweets posted by the ego user
     df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    if time_unit=='month':
+        df_tweet['month_diff']=[int(week_diff_to_month_diff(x)) for x in df_tweet.week_diff]
     with open(join(offensive_score_dir,f'activities_made.{identity}.{tweet_type}.txt')) as f:
         scores=[float(x) for x in f.readlines()]
     df_tweet['offensive_ego_score']=scores
@@ -267,6 +269,8 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     
     # get identity scores of tweets posted by the ego user
     df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    if time_unit=='month':
+        df_tweet['month_diff']=[int(week_diff_to_month_diff(x)) for x in df_tweet.week_diff]
     with open(join(identity_score_dir,f'{tweet_type}.activities_made.{identity}.txt')) as f:
         scores=[float(x) for x in f.readlines()]
     df_tweet['identity_ego_score']=scores
