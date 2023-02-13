@@ -405,6 +405,6 @@ def run_offensive_regression(idx=None):
 
 if __name__=='__main__':
     if len(sys.argv)>1:
-        run_regression(sys.argv[1])
+        run_offensive_regression(sys.argv[1])
     else:
-        run_regression()
+        run_offensive_regression()
