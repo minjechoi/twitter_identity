@@ -1,5 +1,6 @@
 import os
 from os.path import join
+import sys
 from multiprocessing import Pool
 
 import numpy as np
@@ -8,8 +9,31 @@ import statsmodels.api as sm
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import chi2
 
-from twitter_identity.utils.utils import week_diff_to_month_diff, get_identities
 
+# added due to greatlakes
+def get_identities():
+    """Simply returns the list of identities
+    """
+    user_data_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/cov_dir'
+    identities = sorted([file.split('.')[1] for file in os.listdir(user_data_dir) if file.startswith('all_covariates')])
+    return identities
+
+def week_diff_to_month_diff(week):
+    """Switches week difference to month difference. Month difference here is actually 4-weeks
+
+    Args:
+        week (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    if week==0:
+        return 0
+    elif week>0:
+        return np.ceil(week/4)
+    elif week<0:
+        return np.floor(week/4)
+    
 def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
     assert rq in ['language','activity']
     assert time_unit in ['month','week']
@@ -23,10 +47,15 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
     assert est in ['abs','rel']
     assert tweet_type in ['tweet','retweet','all']
     
-    save_dir=f'/shared/3/projects/bio-change/data/interim/regressions/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
-    cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/with_tweet_identity/all_covariates.{identity}.df.tsv'
-    tweet_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
-    score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
+    # save_dir=f'/shared/3/projects/bio-change/data/interim/regressions/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    # cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/with_tweet_identity/all_covariates.{identity}.df.tsv'
+    # tweet_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
+    # score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
+    
+    save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/cov_dir/all_covariates.{identity}.df.tsv'
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/tweet_dir'
+    score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/score_dir'
     
     time_unit_col = f'{time_unit}_diff'
 
@@ -292,27 +321,26 @@ def run_regression_offensive_change_worker(time_unit, identity, tweet_type):
     # merge with scores of tweets of user
     df3=df_tweet[['user_id','week_diff','tweet_score']].groupby(['user_id','week_diff']).max().reset_index()
     df2=df2.merge(df3,on=['user_id','week_diff'],how='left').fillna(0)
-
-
     return
 
-def run_regression():
+def run_regression(idx=None):
     identities = get_identities()
+    settings=[]
     inputs = []
-    for rq in ['language','activity']:
-        # for identity in identities:
-        for identity in ['age_50+']:
-            # for time_unit in ['month','week']:
-            for time_unit in ['month','week']:
-                for tweet_type in ['tweet','retweet']:
-                # for tweet_type in ['retweet']:
-                    for est in ['rel','abs']:
-                        # for agg in ['mean']:
-                        for agg in ['count','mean','max']:
-                            inputs.append((rq, time_unit, agg, est, identity, tweet_type))
-            # time_unit, agg, identity, tweet_type
+    for est in ['rel','abs']:
+        for time_unit in ['month','week']:
+            for rq in ['language','activity']:
+                settings.append((est,time_unit,rq))
+    if idx:
+        settings=[settings[int(idx)]]
 
-    pool = Pool(12)
+    print('settings:',settings)
+    for est,time_unit,rq in settings:
+        for agg in ['count','mean','max']:
+                for tweet_type in ['tweet','retweet']:
+                    for identity in identities:
+                        inputs.append((rq, time_unit, agg, est, identity, tweet_type))
+                    
     # pool.starmap(run_regression_activity_change_worker, inputs)
     for input in inputs:
         # run_regression_activity_change_worker(*input)
@@ -323,6 +351,8 @@ def run_regression():
     # run_regression_language_change_worker(*inputs[0])
     return
 
-
 if __name__=='__main__':
-    run_regression()
+    if len(sys.argv)>1:
+        run_regression(sys.argv[1])
+    else:
+        run_regression()
