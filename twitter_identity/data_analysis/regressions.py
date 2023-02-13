@@ -246,10 +246,20 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     if time_unit=='week':
         df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=12)]
     
+    # add offensiveness scores by others to dataframe    
+    df_tweet=df_tweet[['user_id',time_unit_col,'score']]
+    if agg=='mean':
+        df_tweet=df_tweet.groupby(['user_id',time_unit_col]).mean().reset_index()
+    elif agg=='mean':
+        df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
+    if agg=='mean':
+        df_tweet=df_tweet[df_tweet.score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
+    df2=df1.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
+
     # get counts of tweets per week to add as control
     df_cnt=df_tweet.groupby(['user_id',time_unit_col]).count().reset_index()[['user_id',time_unit_col,'score']]
     df_cnt=df_cnt.rename(columns = {'score':'activity_count'})
-    df2=df1.merge(df_cnt,on=['user_id',time_unit_col],how='left').fillna(0)
+    df3=df2.merge(df_cnt,on=['user_id',time_unit_col],how='left').fillna(0)
     
     # get offensiveness scores of tweets posted by the ego user
     df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
@@ -265,7 +275,7 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
         df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
     if agg=='mean':
         df_tweet=df_tweet[df_tweet.offensive_ego_score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
-    df3=df2.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
+    df4=df3.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
     
     # get identity scores of tweets posted by the ego user
     df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
@@ -281,25 +291,25 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
         df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
     if agg=='mean':
         df_tweet=df_tweet[df_tweet.identity_ego_score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
-    df4=df3.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
+    df5=df4.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
     
 
     # optional-change to log variables so that we can measure percentage change instead
     if est=='rel':
         # if outcome is score - omit missing values
         if agg in ['mean','max']:
-            df4=df4[df4.score>0]
+            df5=df5[df5.score>0]
         # if outcome is count, add small value
         elif agg=='count':
-            df4['score']+=0.1
-        df4['score']=[np.log(x) for x in df4['score']]
+            df5['score']+=0.1
+        df5['score']=[np.log(x) for x in df5['score']]
     
     # remove time unit corresponding to zero - needed because we want to remove the week of treatment which may be volatile and doesn't have enough data when aggregated at monthly basis
-    df4=df4[df4[f'{time_unit}_diff']!=0]
+    df5=df5[df5[f'{time_unit}_diff']!=0]
     
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    df4[f'{time_unit}_diff_treated']=[max(0,x) for x in df4[time_unit_col]] # all time units below 0 are set as zero
-    df4[f'{time_unit}_diff_treated']=df4[f'{time_unit}_diff_treated']*df4['is_identity'] # all values<=0 now become 0 if they are assigned in control group
+    df5[f'{time_unit}_diff_treated']=[max(0,x) for x in df5[time_unit_col]] # all time units below 0 are set as zero
+    df5[f'{time_unit}_diff_treated']=df5[f'{time_unit}_diff_treated']*df5['is_identity'] # all values<=0 now become 0 if they are assigned in control group
     
     valid_columns = [
         'fri','fol','sta', # user activity history
@@ -315,15 +325,15 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     scaler = StandardScaler()
     X = pd.concat(
         [
-            df3[valid_columns],
-            pd.get_dummies(df4['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
-            pd.get_dummies(df4[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
-            pd.get_dummies(df4[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
+            df5[valid_columns],
+            pd.get_dummies(df5['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
+            pd.get_dummies(df5[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
+            pd.get_dummies(df5[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
         ],
         axis=1
     )
-    y = df4.score
-    groups=df4.user_id
+    y = df5.score
+    groups=df5.user_id
     X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
     # optional-normalize the activity count if language&count
     if (est=='rel'):
