@@ -196,44 +196,165 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
     print(f"Finished saving results for post-profile language change in {tweet_type}:{identity}")
     return
 
-def run_regression_offensive_change_worker(time_unit, identity, tweet_type):
-    setting='with_tweet_identity'
-    # get treated / control users
-    df_cov=pd.read_csv(f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/{setting}/all_covariates.{identity}.df.tsv',
-                    sep='\t',dtype={'user_id':str})
+def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
+    assert rq=='offensive'
+    assert time_unit in ['month','week']
+    assert agg in ['mean','max','count']
+    assert est in ['abs','rel']
+    assert tweet_type=='tweet'
     
-    # load offensiveness scores for tweets
-    activity_type='activities_origin'
+    save_dir=f'/shared/3/projects/bio-change/data/interim/regressions/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/with_tweet_identity/all_covariates.{identity}.df.tsv'
     tweet_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
-    df_tweet=pd.read_csv(join(tweet_dir,f'{activity_type}.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
-    df_tweet['month_diff']=[int(week_diff_to_month_diff(x)) for x in df_tweet.week_diff]
-    score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/offensiveness-scores/'
-    with open(join(score_dir,f'{activity_type}.{identity}.{tweet_type}.txt')) as f:
+    identity_score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
+    offensive_score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/offensiveness-scores'
+    
+    save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/cov_dir/all_covariates.{identity}.df.tsv'
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/tweet_dir'
+    identity_score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/score_dir'
+    offensive_score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/offensive_dir'
+    
+    time_unit_col = f'{time_unit}_diff'
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    for file in os.listdir(save_dir):
+        if file.startswith(f'table.{identity}'):
+            print(f'File {file} already exists! Skipping...')
+            return
+
+    # load covariates
+    df_cov=pd.read_csv(cov_file,sep='\t',dtype={'user_id':str})
+
+    # load all tweet info and match to score
+    df_tweet=pd.read_csv(join(tweet_dir,f'activities_origin.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    # optional-add month values if time unit is month
+    if time_unit=='month':
+        df_tweet['month_diff']=[int(week_diff_to_month_diff(x)) for x in df_tweet.week_diff]
+    # add offensiveness scores sent by others
+    with open(join(offensive_score_dir,f'activities_origin.{identity}.{tweet_type}.txt')) as f:
         scores=[float(x) for x in f.readlines()]
-    df_tweet['offensive_score']=scores
+    df_tweet['score']=scores        
     
     # get placeholder for each user and each week difference
-    df_week=df_tweet[['week_diff','month_diff']].drop_duplicates().sort_values(by=['week_diff'])
-    df1 = df_cov.merge(df_week,how='cross')
-    df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=12)]
-
-    # merge with offensiveness of replies
-    df2=df_tweet[['user_id','week_diff','offensive_score']].groupby(['user_id','week_diff']).max().reset_index()
-    df2=df1.merge(df2,on=['user_id','week_diff'],how='left').fillna(0)
-
-    # load identity scores of past tweets
-    activity_type='activities_made'
-    tweet_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
-    df_tweet=pd.read_csv(join(tweet_dir,f'{activity_type}.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
-    df_tweet['month_diff']=[int(week_diff_to_month_diff(x)) for x in df_tweet.week_diff]
-    score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores/'
-    with open(join(score_dir,f'{tweet_type}.{activity_type}.{identity}.txt')) as f:
+    df_time=df_tweet[[time_unit_col]].drop_duplicates().sort_values(by=[time_unit_col])
+    df1 = df_cov.merge(df_time,how='cross')
+    if time_unit=='month':
+        df1=df1[(df1.month_diff>=-1)&(df1.month_diff<=3)]
+    if time_unit=='week':
+        df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=12)]
+    
+    # get counts of tweets per week to add as control
+    df_cnt=df_tweet.groupby(['user_id',time_unit_col]).count().reset_index()[['user_id',time_unit_col,'score']]
+    df_cnt=df_cnt.rename(columns = {'score':'activity_count'})
+    df2=df1.merge(df_cnt,on=['user_id',time_unit_col],how='left').fillna(0)
+    
+    # get offensiveness scores of tweets posted by the ego user
+    df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    with open(join(offensive_score_dir,f'activities_made.{identity}.{tweet_type}.txt')) as f:
         scores=[float(x) for x in f.readlines()]
-    df_tweet['tweet_score']=scores
+    df_tweet['offensive_ego_score']=scores
+    df_tweet=df_tweet[['user_id',time_unit_col,'offensive_ego_score']]
+    if agg=='mean':
+        df_tweet=df_tweet.groupby(['user_id',time_unit_col]).mean().reset_index()
+    elif agg=='mean':
+        df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
+    if agg=='mean':
+        df_tweet=df_tweet[df_tweet.offensive_ego_score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
+    df3=df2.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
+    
+    # get identity scores of tweets posted by the ego user
+    df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    with open(join(identity_score_dir,f'{tweet_type}.activities_made.{identity}.txt')) as f:
+        scores=[float(x) for x in f.readlines()]
+    df_tweet['identity_ego_score']=scores
+    df_tweet=df_tweet[['user_id',time_unit_col,'identity_ego_score']]
+    if agg=='mean':
+        df_tweet=df_tweet.groupby(['user_id',time_unit_col]).mean().reset_index()
+    elif agg=='mean':
+        df_tweet=df_tweet.groupby(['user_id',time_unit_col]).max().reset_index()
+    if agg=='mean':
+        df_tweet=df_tweet[df_tweet.identity_ego_score>=0.5].groupby(['user_id',time_unit_col]).count().reset_index()
+    df4=df3.merge(df_tweet,on=['user_id',time_unit_col],how='left').fillna(0)
+    
 
-    # merge with scores of tweets of user
-    df3=df_tweet[['user_id','week_diff','tweet_score']].groupby(['user_id','week_diff']).max().reset_index()
-    df2=df2.merge(df3,on=['user_id','week_diff'],how='left').fillna(0)
+    # optional-change to log variables so that we can measure percentage change instead
+    if est=='rel':
+        # if outcome is score - omit missing values
+        if agg in ['mean','max']:
+            df4=df4[df4.score>0]
+        # if outcome is count, add small value
+        elif agg=='count':
+            df4['score']+=0.1
+        df4['score']=[np.log(x) for x in df4['score']]
+    
+    # remove time unit corresponding to zero - needed because we want to remove the week of treatment which may be volatile and doesn't have enough data when aggregated at monthly basis
+    df4=df4[df4[f'{time_unit}_diff']!=0]
+    
+    # create additional column corresponding for (1) post-treatment time & (2) in treated group
+    df4[f'{time_unit}_diff_treated']=[max(0,x) for x in df4[time_unit_col]] # all time units below 0 are set as zero
+    df4[f'{time_unit}_diff_treated']=df4[f'{time_unit}_diff_treated']*df4['is_identity'] # all values<=0 now become 0 if they are assigned in control group
+    
+    valid_columns = [
+        'fri','fol','sta', # user activity history
+        'profile_score', # identity score of previous profile
+        'n_days_since_profile', # number of days since account was created
+        'is_identity', # is treated user
+        'offensive_ego_score',
+        'identity_ego_score',
+        'activity_count'
+        ]
+    
+    # set up a regression task using statsmodels
+    scaler = StandardScaler()
+    X = pd.concat(
+        [
+            df3[valid_columns],
+            pd.get_dummies(df4['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
+            pd.get_dummies(df4[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
+            pd.get_dummies(df4[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
+        ],
+        axis=1
+    )
+    y = df4.score
+    groups=df4.user_id
+    X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
+    # optional-normalize the activity count if language&count
+    if (est=='rel'):
+        X['activity_count']=[np.log(x+0.1) for x in X['activity_count']]
+    X = sm.add_constant(X)
+
+    # run model    
+    model=sm.MixedLM(endog=y, exog=X, groups=groups)
+    result=model.fit()
+    print(result.summary())
+        
+    # run reduced model
+    drop_columns = ['is_identity']+[col for col in X.columns if f'{time_unit}_diff_treated' in col]
+    X2 = X.drop(columns=drop_columns,axis=1)
+    model2=sm.MixedLM(endog=y, exog=X2, groups=groups)
+    result2=model2.fit()
+    
+    # perform log-likelihood test
+    llf = result.llf
+    llr = result2.llf
+    LR_statistic = -2*(llr-llf)
+    #calculate p-value of test statistic using 2 degrees of freedom
+    p_val = chi2.sf(LR_statistic, len(drop_columns))
+    p_val = round(p_val,3)
+
+    # save results as dataframe
+    res=result.conf_int()
+    res.columns=['coef_low','coef_high']
+    res['coef']=result.params # coef
+    res['pval']=result.pvalues
+    res = res.reset_index()
+    save_file=join(save_dir,f'table.{identity}.chi2_{p_val}.df.tsv')
+    res = res[['index','pval','coef','coef_low','coef_high']]
+    res.to_csv(save_file,sep='\t',index=False)
+    print(f"Finished saving results for offensive language change in {tweet_type}:{identity}")
     return
 
 def run_regression(idx=None):
@@ -254,15 +375,33 @@ def run_regression(idx=None):
                     for identity in identities:
                         inputs.append((rq, time_unit, agg, est, identity, tweet_type))
                     
-    # pool.starmap(run_regression_activity_change_worker, inputs)
     for input in inputs:
-        # run_regression_activity_change_worker(*input)
         run_regression_worker(*input)
-    # pool.starmap(run_regression_language_change_worker, inputs)
-
-    # inputs=[('post','gender_nonbinary','retweet')]
-    # run_regression_language_change_worker(*inputs[0])
     return
+
+def run_offensive_regression(idx=None):
+    identities = get_identities()
+    settings = []
+    rq='offensive'
+    tweet_type='tweet'
+    for est in ['rel','abs']:
+        for time_unit in ['month','week']:
+            settings.append((rq, time_unit, est, tweet_type))
+                
+    if idx:
+        settings=[settings[int(idx)]]
+    # rq, time_unit, agg, est, identity, tweet_type
+    
+    inputs = []
+    for rq, time_unit, est, tweet_type in settings:
+        for agg in ['count','mean','max']:
+            for identity in identities:
+                inputs.append((rq, time_unit, agg, est, identity, tweet_type))
+                
+    for input in inputs:
+        run_offensive_regression_worker(*input)
+    return
+
 
 if __name__=='__main__':
     if len(sys.argv)>1:
