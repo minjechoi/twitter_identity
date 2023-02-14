@@ -141,7 +141,8 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
         'fri','fol','sta', # user activity history
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
-        'is_identity' # is treated user
+        'is_identity', # is treated user
+        f'{time_unit}_diff' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
         valid_columns.append('activity_count') # add column for total activity count
@@ -153,7 +154,7 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
             df3[valid_columns],
             pd.get_dummies(df3['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
             pd.get_dummies(df3[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
-            pd.get_dummies(df3[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
+            # pd.get_dummies(df3[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
         ],
         axis=1
     )
@@ -317,7 +318,8 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
         'is_identity', # is treated user
         'offensive_ego_score',
         'identity_ego_score',
-        'activity_count'
+        'activity_count',
+        f'{time_unit}_diff' # this contains the slope value
         ]
     
     # set up a regression task using statsmodels
@@ -327,7 +329,7 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
             df5[valid_columns],
             pd.get_dummies(df5['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
             pd.get_dummies(df5[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
-            pd.get_dummies(df5[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
+            # pd.get_dummies(df5[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
         ],
         axis=1
     )
