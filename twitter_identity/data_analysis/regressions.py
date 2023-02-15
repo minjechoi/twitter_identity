@@ -52,10 +52,10 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
     # tweet_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
     # score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
     
-    save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
-    cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/cov_dir/all_covariates.{identity}.df.tsv'
-    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/tweet_dir'
-    score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/score_dir'
+    save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/cov_dir/all_covariates.{identity}.df.tsv'
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/tweet_dir'
+    score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/score_dir'
     
     time_unit_col = f'{time_unit}_diff'
 
@@ -367,11 +367,11 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     identity_score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
     offensive_score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/offensiveness-scores'
     
-    save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
-    cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/cov_dir/all_covariates.{identity}.df.tsv'
-    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/tweet_dir'
-    identity_score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/score_dir'
-    offensive_score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/offensive_dir'
+    save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/cov_dir/all_covariates.{identity}.df.tsv'
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/tweet_dir'
+    identity_score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/score_dir'
+    offensive_score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-with_tweet_identity/offensive_dir'
     
     time_unit_col = f'{time_unit}_diff'
 
@@ -598,7 +598,15 @@ def run_offensive_regression(idx=None):
 
 
 if __name__=='__main__':
+    # if len(sys.argv)>1:
+    #     run_regression(sys.argv[1])
+    # else:
+    #     run_regression()
+    # if len(sys.argv)>1:
+    #     run_past_regression(sys.argv[1])
+    # else:
+    #     run_past_regression()
     if len(sys.argv)>1:
-        run_past_regression(sys.argv[1])
+        run_offensive_regression(sys.argv[1])
     else:
-        run_past_regression()
+        run_offensive_regression()
