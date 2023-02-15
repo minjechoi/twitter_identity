@@ -14,7 +14,7 @@ from scipy.stats import chi2
 def get_identities():
     """Simply returns the list of identities
     """
-    user_data_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/cov_dir'
+    user_data_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/cov_dir'
     identities = sorted([file.split('.')[1] for file in os.listdir(user_data_dir) if file.startswith('all_covariates')])
     return identities
 
@@ -142,7 +142,7 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
         'is_identity', # is treated user
-        f'{time_unit}_diff' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
+        f'{time_unit}_diff_treated' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
         valid_columns.append('activity_count') # add column for total activity count
@@ -216,8 +216,8 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
     # score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
     
     save_dir=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/save_dir/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
-    tweet_dir='scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/tweet_dir'
-    score_dir='scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/score_dir'
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/tweet_dir'
+    score_dir='/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/score_dir'
     cov_file=f'/scratch/drom_root/drom0/minje/bio-change/06.regression/identity_added-without_tweet_identity/cov_dir/all_covariates.{identity}.df.tsv'
     
     if not os.path.exists(save_dir):
@@ -287,19 +287,19 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
             df3['score']+=0.1
         df3['score']=[np.log(x) for x in df3['score']]
     
-    # # remove time unit corresponding to zero - needed because we want to remove the week of treatment which may be volatile and doesn't have enough data when aggregated at monthly basis
-    # df3=df3[df3[f'{time_unit}_diff']!=0]
+    # remove time unit corresponding to zero - needed because we want to remove the week of treatment which may be volatile and doesn't have enough data when aggregated at monthly basis
+    df3=df3[df3[f'{time_unit}_diff']!=0]
     
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    df3[f'{time_unit}_diff_treated']=[max(0,x) for x in df3[time_unit_col]] # all time units below 0 are set as zero
-    df3[f'{time_unit}_diff_treated']=df3[f'{time_unit}_diff_treated']*df3['is_identity'] # all values<=0 now become 0 if they are assigned in control group
+    # df3[f'{time_unit}_diff_treated']=[max(0,x) for x in df3[time_unit_col]] # all time units below 0 are set as zero
+    df3[f'{time_unit}_diff_treated']=df3[time_unit_col]*df3['is_identity'] # all values<=0 now become 0 if they are assigned in control group
     
     valid_columns = [
         'fri','fol','sta', # user activity history
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
         'is_identity', # is treated user
-        f'{time_unit}_diff' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
+        f'{time_unit}_diff_treated' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
         valid_columns.append('activity_count') # add column for total activity count
@@ -476,7 +476,7 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
         'offensive_ego_score',
         'identity_ego_score',
         'activity_count',
-        f'{time_unit}_diff' # this contains the slope value
+        f'{time_unit}_diff_treated' # this contains the slope value
         ]
     
     # set up a regression task using statsmodels
@@ -570,7 +570,7 @@ def run_past_regression(idx=None):
                         inputs.append((rq, time_unit, agg, est, identity, tweet_type))
                     
     for input in inputs:
-        run_past_regression_worker(*input)
+        run_regression_past_worker(*input)
     return
 
 def run_offensive_regression(idx=None):
