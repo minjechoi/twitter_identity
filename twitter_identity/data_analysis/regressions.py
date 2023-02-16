@@ -125,24 +125,26 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
         # if outcome is score - omit missing values
         if agg in ['mean','max']:
             df3=df3[df3.score>0]
-        # if outcome is count, add small value
+        # if outcome is count, add small value and log transform
         elif agg=='count':
             df3['score']+=0.1
         df3['score']=[np.log(x) for x in df3['score']]
     
     # remove time unit corresponding to zero - needed because we want to remove the week of treatment which may be volatile and doesn't have enough data when aggregated at monthly basis
     df3=df3[df3[f'{time_unit}_diff']!=0]
-    
+        
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    df3[f'{time_unit}_diff_treated']=[max(0,x) for x in df3[time_unit_col]] # all time units below 0 are set as zero
-    df3[f'{time_unit}_diff_treated']=df3[f'{time_unit}_diff_treated']*df3['is_identity'] # all values<=0 now become 0 if they are assigned in control group
-    
+    df3[f'{time_unit}s_since_treatment']=[max(0,x) for x in df3[time_unit_col]]
+    df3[f'{time_unit}s_since_treatment']=df3[f'{time_unit}s_since_treatment']*df3['is_identity'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
+    df3['is_treated']=(df3[f'{time_unit}s_since_treatment']>0).astype(int) # whether unit has been treated (intercept of treatment)
+        
     valid_columns = [
         'fri','fol','sta', # user activity history
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
-        'is_identity', # is treated user
-        f'{time_unit}_diff_treated' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
+        'is_identity', # is assigned into treatment group
+        'is_treated', # has been treated
+        f'{time_unit}s_since_treatment', # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
         valid_columns.append('activity_count') # add column for total activity count
@@ -154,7 +156,6 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
             df3[valid_columns],
             pd.get_dummies(df3['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
             pd.get_dummies(df3[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
-            # pd.get_dummies(df3[f'{time_unit}_diff_treated'],prefix=f'{time_unit}_diff_treated',drop_first=True)        
         ],
         axis=1
     )
@@ -291,15 +292,17 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
     df3=df3[df3[f'{time_unit}_diff']!=0]
     
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    # df3[f'{time_unit}_diff_treated']=[max(0,x) for x in df3[time_unit_col]] # all time units below 0 are set as zero
-    df3[f'{time_unit}_diff_treated']=df3[time_unit_col]*df3['is_identity'] # all values<=0 now become 0 if they are assigned in control group
+    df3[f'{time_unit}s_since_treatment']=[max(0,x) for x in df3[time_unit_col]]
+    df3[f'{time_unit}s_since_treatment']=df3[f'{time_unit}s_since_treatment']*df3['is_identity'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
+    df3['is_treated']=(df3[f'{time_unit}s_since_treatment']>0).astype(int) # whether unit has been treated (intercept of treatment)
     
     valid_columns = [
         'fri','fol','sta', # user activity history
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
         'is_identity', # is treated user
-        f'{time_unit}_diff_treated' # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
+        'is_treated', # has been treated
+        f'{time_unit}s_since_treatment', # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
         valid_columns.append('activity_count') # add column for total activity count
@@ -465,8 +468,9 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     df5=df5[df5[f'{time_unit}_diff']!=0]
     
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    df5[f'{time_unit}_diff_treated']=[max(0,x) for x in df5[time_unit_col]] # all time units below 0 are set as zero
-    df5[f'{time_unit}_diff_treated']=df5[f'{time_unit}_diff_treated']*df5['is_identity'] # all values<=0 now become 0 if they are assigned in control group
+    df5[f'{time_unit}s_since_treatment']=[max(0,x) for x in df5[time_unit_col]]
+    df5[f'{time_unit}s_since_treatment']=df5[f'{time_unit}s_since_treatment']*df5['is_identity'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
+    df5['is_treated']=(df5[f'{time_unit}s_since_treatment']>0).astype(int) # whether unit has been treated (intercept of treatment)
     
     valid_columns = [
         'fri','fol','sta', # user activity history
@@ -476,7 +480,8 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
         'offensive_ego_score',
         'identity_ego_score',
         'activity_count',
-        f'{time_unit}_diff_treated' # this contains the slope value
+        'is_treated', # has been treated
+        f'{time_unit}s_since_treatment', # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     
     # set up a regression task using statsmodels
