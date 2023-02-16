@@ -245,7 +245,6 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
         df_tweet['score']=scores
     elif rq=='activity':
         df_tweet['score']=1
-        
     
     # get placeholder for each user and each week difference
     df_time=df_tweet[[time_unit_col]].drop_duplicates().sort_values(by=[time_unit_col])
@@ -292,6 +291,7 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
     df3=df3[df3[f'{time_unit}_diff']!=0]
     
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
+    df3[time_unit_col]+=4
     df3[f'{time_unit}s_since_treatment']=df3[time_unit_col]*df3['is_identity'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
     
     valid_columns = [
