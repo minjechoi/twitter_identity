@@ -173,7 +173,7 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type):
     print(result.summary())
         
     # run reduced model
-    drop_columns = ['is_identity']+[col for col in X.columns if f'{time_unit}_diff_treated' in col]
+    drop_columns = ['is_identity','is_treated',f'{time_unit}s_since_treatment']
     X2 = X.drop(columns=drop_columns,axis=1)
     model2=sm.MixedLM(endog=y, exog=X2, groups=groups)
     result2=model2.fit()
@@ -332,7 +332,7 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
     print(result.summary())
         
     # run reduced model
-    drop_columns = ['is_identity']+[col for col in X.columns if f'{time_unit}_diff_treated' in col]
+    drop_columns = ['is_identity','is_treated',f'{time_unit}s_since_treatment']
     X2 = X.drop(columns=drop_columns,axis=1)
     model2=sm.MixedLM(endog=y, exog=X2, groups=groups)
     result2=model2.fit()
@@ -509,7 +509,7 @@ def run_offensive_regression_worker(rq, time_unit, agg, est, identity, tweet_typ
     print(result.summary())
         
     # run reduced model
-    drop_columns = ['is_identity']+[col for col in X.columns if f'{time_unit}_diff_treated' in col]
+    drop_columns = ['is_identity','is_treated',f'{time_unit}s_since_treatment']
     X2 = X.drop(columns=drop_columns,axis=1)
     model2=sm.MixedLM(endog=y, exog=X2, groups=groups)
     result2=model2.fit()
@@ -547,7 +547,7 @@ def run_regression(idx=None):
 
     print('settings:',settings)
     for est,time_unit,rq in settings:
-        for agg in ['count','mean','max']:
+        for agg in ['count','mean']:
                 for tweet_type in ['tweet','retweet']:
                     for identity in identities:
                         inputs.append((rq, time_unit, agg, est, identity, tweet_type))
@@ -593,7 +593,7 @@ def run_offensive_regression(idx=None):
     
     inputs = []
     for rq, time_unit, est, tweet_type in settings:
-        for agg in ['count','mean','max']:
+        for agg in ['count','mean']:
             for identity in identities:
                 inputs.append((rq, time_unit, agg, est, identity, tweet_type))
                 
@@ -603,15 +603,15 @@ def run_offensive_regression(idx=None):
 
 
 if __name__=='__main__':
-    # if len(sys.argv)>1:
-    #     run_regression(sys.argv[1])
-    # else:
-    #     run_regression()
+    if len(sys.argv)>1:
+        run_regression(sys.argv[1])
+    else:
+        run_regression()
     # if len(sys.argv)>1:
     #     run_past_regression(sys.argv[1])
     # else:
     #     run_past_regression()
-    if len(sys.argv)>1:
-        run_offensive_regression(sys.argv[1])
-    else:
-        run_offensive_regression()
+    # if len(sys.argv)>1:
+    #     run_offensive_regression(sys.argv[1])
+    # else:
+    #     run_offensive_regression()
