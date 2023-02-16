@@ -292,16 +292,13 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
     df3=df3[df3[f'{time_unit}_diff']!=0]
     
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    df3[f'{time_unit}s_since_treatment']=[max(0,x) for x in df3[time_unit_col]]
-    df3[f'{time_unit}s_since_treatment']=df3[f'{time_unit}s_since_treatment']*df3['is_identity'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
-    df3['is_treated']=(df3[f'{time_unit}s_since_treatment']>0).astype(int) # whether unit has been treated (intercept of treatment)
+    df3[f'{time_unit}s_since_treatment']=df3[time_unit_col]*df3['is_identity'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
     
     valid_columns = [
         'fri','fol','sta', # user activity history
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
         'is_identity', # is treated user
-        'is_treated', # has been treated
         f'{time_unit}s_since_treatment', # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
@@ -332,7 +329,7 @@ def run_regression_past_worker(rq, time_unit, agg, est, identity, tweet_type):
     print(result.summary())
         
     # run reduced model
-    drop_columns = ['is_identity','is_treated',f'{time_unit}s_since_treatment']
+    drop_columns = ['is_identity',f'{time_unit}s_since_treatment']
     X2 = X.drop(columns=drop_columns,axis=1)
     model2=sm.MixedLM(endog=y, exog=X2, groups=groups)
     result2=model2.fit()
