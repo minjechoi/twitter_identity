@@ -161,16 +161,26 @@ def collect_tweets(file, save_dir):
 
     # load users
     valid_users=set()
-    with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_treated_users.tsv') as f:
-        for line in f:
-            line=line.split('\t')
-            uid=line[1]
-            valid_users.add(uid)
-    with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_potential_control_users.tsv') as f:
-        for line in f:
-            line=line.split('\t')
-            uid=line[0]
-            valid_users.add(uid)
+    user_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/propensity'
+    for typ in ['without_tweet_identity','with_tweet_identity']:
+        for user_file in sorted(os.listdir(join(user_dir,typ))):
+            if user_file.startswith('all_covariates'):
+                with open(join(user_dir,typ,user_file)) as f:
+                    for ln,line in enumerate(f):
+                        if ln>0:
+                            uid=line.split('\t')[0]
+                            valid_users.add(uid)
+        
+    # with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_treated_users.tsv') as f:
+    #     for line in f:
+    #         line=line.split('\t')
+    #         uid=line[1]
+    #         valid_users.add(uid)
+    # with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_potential_control_users.tsv') as f:
+    #     for line in f:
+    #         line=line.split('\t')
+    #         uid=line[0]
+    #         valid_users.add(uid)
 
     uid2user = {} # to store user info
 
@@ -373,6 +383,7 @@ def set_multiprocessing(save_dir, files:list, modulo=None):
     # try:
     # pool.map(collect_tweets,files)
     pool.starmap(collect_tweets,inputs)
+    # collect_tweets(*inputs[10])
     # finally:
     pool.close()
     return
@@ -399,9 +410,11 @@ if __name__=='__main__':
     # print("Start job")
 
     # files = get_twitter_files()
-    file_dir = '/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/raw-tweets-2020'
+    file_dir = '/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
     files = [join(file_dir,file) for file in sorted(os.listdir(file_dir))]
-    save_dir='/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego-tweets'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     if len(sys.argv)==2:
         set_multiprocessing(save_dir=save_dir, files=files, modulo=sys.argv[1])
     else:
