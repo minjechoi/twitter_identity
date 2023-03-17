@@ -77,13 +77,17 @@ def get_user_info(obj):
         _type_: (dict) Extracted user object
     """
     out={}
-    for col in ['id_str','lang','name','screen_name',
-               'verified','followers_count','friends_count',
-               'statuses_count','created_at','utc_offset']:
+    for col in [
+        'id_str','lang','name','screen_name','description',
+               'verified','followers_count','friends_count','statuses_count','listed_count','favourites_count',
+               'location','profile_image_url_https','profile_banner_url',
+               'default_profile','default_profile_image',
+               'profile_background_image_url_https',
+               'created_at','utc_offset']:
         out[col]=obj[col]
     return out
 
-def get_tweet_info(obj):
+def get_tweet_info(obj,out=None):
     """Returns extracted tweet info
 
     Args:
@@ -92,13 +96,15 @@ def get_tweet_info(obj):
     Returns:
         _type_: (dict) extracted tweet object
     """
-    out={}
+    if out==None:
+        out={}
     out['id']=obj['id_str']
     out['user_id']=obj['user']['id_str']
     out['lang']=obj['lang'] if 'lang' in obj else None
     out['text']=obj['extended_tweet']['full_text'] if 'extended_tweet' in obj else obj['text']
     out['created_at']=obj['created_at']
     out['tweet_type']='tweet'
+    out['user_mentions']=[(x['screen_name'],x['name'],x['id_str']) for x in obj['entities']['user_mentions']]
     return out
 
 def add_retweet_info(obj,out,status):
@@ -121,6 +127,7 @@ def add_retweet_info(obj,out,status):
         out['lang_origin']=obj['lang'] if 'lang' in obj else None
         out['text_origin']=obj['extended_tweet']['full_text'] if 'extended_tweet' in obj else obj['text']
         out['tweet_type']='quote'
+        out['user_mentions']=[(x['screen_name'],x['name'],x['id_str']) for x in obj['entities']['user_mentions']]
     return out
 
 def add_reply_info(obj,out):
@@ -180,8 +187,8 @@ def collect_tweets(file, save_dir):
 
     try:
         for ln,line in enumerate(f):
-            # if ln>100000:
-            #     break
+            if ln>100000:
+                break
             # if ln%1000000==0:
             #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
             # if ln>1000000:
