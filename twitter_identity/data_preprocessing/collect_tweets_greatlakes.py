@@ -80,7 +80,7 @@ def get_user_info(obj):
     for col in [
         'id_str','lang','name','screen_name','description',
                'verified','followers_count','friends_count','statuses_count','listed_count','favourites_count',
-               'location','profile_image_url_https','profile_banner_url',
+               'location','profile_image_url_https',
                'default_profile','default_profile_image',
                'profile_background_image_url_https',
                'created_at','utc_offset']:
