@@ -197,8 +197,8 @@ def collect_tweets(file, save_dir):
 
     try:
         for ln,line in enumerate(f):
-            if ln>100000:
-                break
+            # if ln>100000:
+            #     break
             # if ln%1000000==0:
             #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
             # if ln>1000000:
