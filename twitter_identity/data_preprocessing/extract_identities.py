@@ -7,10 +7,12 @@ from os.path import join
 import re
 from multiprocessing import Pool
 from collections import Counter
+import sys
 import gzip
 
 # import emoji
 import numpy as np
+import ujson as json
 import pandas as pd
 from tqdm import tqdm
 
@@ -324,7 +326,7 @@ class IdentityExtactor:
 
         reg = re.compile(
                 r'\b(ph(?:\.)?d|mba|student|univ(?:ersity)|college|grad(?:uate)?|(?:freshman|sophomore|junior|senior) at|class of|school|study(?:ing)?|\
-                studie(?:s|d)|alum(?:$|na|nus|ni)\b'
+                studie(?:s|d)|alum(?:$|na|nus|ni))\b'
             )
 
         re_exclude_list = [
@@ -562,20 +564,22 @@ def extract_identities_from_file(
         f=gzip.open(input_file,'rt')
     else:
         f=open(input_file,'r')
-    outf = open(output_file,'w')
+    outf = gzip.open(output_file,'wt')
 
     cnt = 0
+    ts = input_file.split('.')[-3]
     for ln,line in enumerate(f):
-        line=line.split('\t')
-        uid,ts,description = line[:3]
+        obj0 = json.loads(line)
+        uid,description = obj0['id_str'],obj0['description']
 
         obj = {}
         # run identity extraction
-        for identity in identities:
-            extractor = IdEx.identity2extractor[identity]
-            res = extractor(description.lower())
-            if res:
-                obj[identity] = res
+        if type(description)==str:
+            for identity in identities:
+                extractor = IdEx.identity2extractor[identity]
+                res = extractor(description)
+                if res:
+                    obj[identity] = res.lower()
             
         # save results
         line_out = []
@@ -604,13 +608,44 @@ def run_multiprocessing(input_dir, output_dir, identities=ALL_IDENTITIES, modulo
             inputs.append((input_file,output_file,[identity]))
 
     if modulo:
-        inputs = [x for i,x in enumerate(inputs) if i%7==modulo]
+        inputs = [x for i,x in enumerate(inputs) if i%10==modulo]
 
     pool = Pool(32)
-    pool.starmap(extract_identities_from_file, inputs)
+    # pool.starmap(extract_identities_from_file, inputs)
+    for input in inputs:
+        extract_identities_from_file(*input)
     return
 
+def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
+    pool=Pool(32)
+    from os import sched_getaffinity
+    n_available_cores = len(sched_getaffinity(0))
+    print(f'Number of Available CPU cores: {n_available_cores}')
+    number_of_cores = int(os.environ['SLURM_CPUS_PER_TASK'])
+    print(f'Number of CPU cores: {number_of_cores}')
 
+
+    files = sorted([file for file in os.listdir(load_dir) if file.startswith('user')])
+
+    if type(modulo)==str:
+        modulo=int(modulo)
+        files=[files[i] for i in range(len(files)) if i%10==modulo]
+    print(len(files),' files to read!')
+
+    inputs = []
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    for twitter_file in files:
+        inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file),ALL_IDENTITIES))
+    # try:
+    # pool.map(collect_tweets,files)
+    pool.starmap(fun,inputs)
+    # fun(*inputs[10])
+    # finally:
+    pool.close()
+    return
             
 
 
@@ -633,17 +668,23 @@ if __name__=='__main__':
     #     output_file,
     #     identities=['religion'])
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', default='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/splitted-data')
-    parser.add_argument('--output_dir', default='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/splitted-results')
-    parser.add_argument('--modulo', type=int, default=None)
-    parser.add_argument('--identities', type=str, default=None)
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--input_dir', default='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets')
+    # parser.add_argument('--output_dir', default='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/3.all-identities')
+    # parser.add_argument('--modulo', type=int, default=None)
+    # parser.add_argument('--identities', type=str, default=None)
+    # args = parser.parse_args()
 
-    if args.identities:
-        identities = args.identities.split(',')
+    # if args.identities:
+    #     identities = args.identities.split(',')
+    # else:
+    identities = ALL_IDENTITIES
+    
+    load_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/3.all-identities'
+    if len(sys.argv)==2:
+        set_multiprocessing(fun=extract_identities_from_file,load_dir=load_dir,save_dir=save_dir, modulo=sys.argv[1])
     else:
-        identities = ALL_IDENTITIES
+        set_multiprocessing(fun=extract_identities_from_file,load_dir=load_dir,save_dir=save_dir)
 
     # run_multiprocessing(args.input_dir, args.output_dir, identities, args.modulo)
-    run_multiprocessing(args.input_dir, args.output_dir, ['ethnicity'])
