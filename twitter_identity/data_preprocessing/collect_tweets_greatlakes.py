@@ -11,9 +11,35 @@ from os.path import join
 import bz2
 import gzip
 from time import time
+from datetime import datetime
 
 import ujson as json
 import pandas as pd
+from dateutil.parser import parse
+import numpy as np
+
+def get_weekly_bins(timestamp):
+    """
+    A function that returns the number of the week based on starting date (2020.04.01)
+    :param timestamp: the current timestamp
+    :return:
+    """
+    dt_base = datetime(2020, 4, 1)
+    try:
+        dt_current = datetime.fromtimestamp(float(timestamp))
+    except:
+        dt_current = parse(timestamp)
+    dt_current = dt_current.replace(tzinfo=None)
+    diff = dt_current - dt_base
+    try:
+        diff = dt_current - dt_base
+    except:
+        print('dt-current',dt_current)
+        print('dt-base',dt_base)
+        print(timestamp)
+        import sys
+        sys.exit(0)
+    return int(np.floor(diff.days / 7))
 
 def get_twitter_files():
     """ Return a list of twitter files from the decahose directory
@@ -336,6 +362,35 @@ def test_fn(idx):
     # print(f'{idx} Slept 10 seconds!')
     return idx
 
+def extract_network_data(load_file,save_file):
+    
+    with gzip.open(load_file,'rt') as f,\
+        gzip.open(save_file,'wt') as outf:
+        for line in f:
+            obj=json.loads(line)
+            lang=obj['lang']
+            tid = obj['id']
+            typ = obj['tweet_type']
+            uid_responded = obj['user_id']
+            dt=obj['created_at']
+            if typ in ['retweet','quote']:
+                uid_origin=obj['user_id_origin']
+                if uid_responded!=uid_origin:
+                    dt=get_weekly_bins(dt)
+                    outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
+                    # out.append((typ,dt,uid_responded,uid_origin))
+            elif typ in ['reply','tweet']:
+                if len(obj['user_mentions'])==0:
+                    continue
+                else:
+                    dt=get_weekly_bins(dt)                
+                    for _,_,uid_origin in obj['user_mentions']:
+                        if uid_responded!=uid_origin:
+                            outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
+                            # out.append((typ,dt,uid_responded,uid_origin))
+    
+    return
+
 def test_multiprocessing():
     import multiprocessing
     # Short example demonstrating how to determine the number of cores available.
@@ -354,7 +409,7 @@ def test_multiprocessing():
     print("Total time: ",int(time()-start))
     return
 
-def set_multiprocessing(save_dir, files:list, modulo=None):
+# def set_multiprocessing(save_dir, files:list, modulo=None):
     """Script for running multiprocessing on greatlakes slurm.
 
     Args:
@@ -388,6 +443,39 @@ def set_multiprocessing(save_dir, files:list, modulo=None):
     pool.close()
     return
 
+def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
+    pool=Pool(32)
+    from os import sched_getaffinity
+    n_available_cores = len(sched_getaffinity(0))
+    print(f'Number of Available CPU cores: {n_available_cores}')
+    number_of_cores = int(os.environ['SLURM_CPUS_PER_TASK'])
+    print(f'Number of CPU cores: {number_of_cores}')
+
+
+    files = sorted([file for file in os.listdir(load_dir) if file.startswith('tweets')])
+
+    if type(modulo)==str:
+        modulo=int(modulo)
+        files=[files[i] for i in range(len(files)) if i%10==modulo]
+    print(len(files),' files to read!')
+
+    inputs = []
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+
+    for twitter_file in files:
+        inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file)))
+    # try:
+    # pool.map(collect_tweets,files)
+    pool.starmap(fun,inputs)
+    # collect_tweets(*inputs[10])
+    # finally:
+    pool.close()
+    return
+
+
 def merge_user_files(start_dir, end_dir):
     # merge files
     uid2profile = {}
@@ -410,15 +498,20 @@ if __name__=='__main__':
     # print("Start job")
 
     # files = get_twitter_files()
-    file_dir = '/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
-    files = [join(file_dir,file) for file in sorted(os.listdir(file_dir))]
-    save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego-tweets'
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    # file_dir = '/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
+    # files = [join(file_dir,file) for file in sorted(os.listdir(file_dir))]
+    # save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego-tweets'
+    # if not os.path.exists(save_dir):
+    #     os.makedirs(save_dir)
+    
+    load_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/2.all-networks'
     if len(sys.argv)==2:
-        set_multiprocessing(save_dir=save_dir, files=files, modulo=sys.argv[1])
+        set_multiprocessing(fun=extract_network_data,load_dir=load_dir,save_dir=save_dir, modulo=sys.argv[1])
     else:
-        set_multiprocessing(save_dir=save_dir, files=files)
+        set_multiprocessing(fun=extract_network_data,load_dir=load_dir,save_dir=save_dir)
+        # set_multiprocessing(save_dir=save_dir, files=files)
+    
 
     # collect_tweets(
     #     file=files[0],
@@ -430,5 +523,5 @@ if __name__=='__main__':
     # set_multiprocessing(sys.argv[1])
 
     # merge_user_files(
-    #     start_dir='/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/user_info',
-    #     end_dir='/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/')
+    #     start_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego_tweets',
+    #     end_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego_tweets-collected_users')
