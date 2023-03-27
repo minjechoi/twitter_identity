@@ -54,7 +54,8 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type, model_t
     assert tweet_type in ['tweet','retweet','all']
     assert model_type in ['poisson','gee','glm']
     
-    save_dir=f'/shared/3/projects/bio-change/results/experiments/activity-change/{model_type}/{rq}/results-{tweet_type}-{time_unit}-{agg}-{est}'
+    # save_dir=f'/shared/3/projects/bio-change/data/processed/regressions/{rq}/{model_type}/data-{tweet_type}-{time_unit}-{agg}-{est}'
+    save_dir=f'/shared/3/projects/bio-change/results/experiments/activity-change/regressions/{rq}/{model_type}/results-{tweet_type}-{time_unit}-{agg}-{est}'
     cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/with_tweet_identity/all_covariates.{identity}.df.tsv'
     tweet_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity'
     score_dir='/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity_scores'
@@ -72,6 +73,7 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type, model_t
     # load covariates
     df_cov=pd.read_csv(cov_file,sep='\t',dtype={'user_id':str})
     df_cov=df_cov.rename(columns={'is_identity':'in_treatment_group'})
+    print(df_cov.shape,' users in total')
 
     # load all tweet info and match to score
     df_tweet=pd.read_csv(join(tweet_dir,f'activities_made.{identity}.{tweet_type}.df.tsv.gz'),
@@ -98,9 +100,9 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type, model_t
     # if time_unit=='week':
     #     df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=12)]
     if time_unit=='month':
-        df1=df1[(df1.month_diff>=-3)&(df1.month_diff<=3)]
+        df1=df1[(df1.month_diff>=-1)&(df1.month_diff<=1)]
     if time_unit=='week':
-        df1=df1[(df1.week_diff>=-12)&(df1.week_diff<=12)]
+        df1=df1[(df1.week_diff>=-4)&(df1.week_diff<=4)]
     
     # optional-get counts of tweets per week to add as control
     if rq=='language':
@@ -123,47 +125,55 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type, model_t
         df_score=df_tweet.groupby(['user_id',time_unit_col]).count().reset_index()[['user_id',time_unit_col,'score']]        
         
     # merge scores to existing table
-    df3=df2.merge(df_score,on=['user_id',f'{time_unit}_diff'],how='left').fillna(0)
+    df3=df2.merge(df_score,on=['user_id',time_unit_col],how='left').fillna(0)
     
     # remove time unit corresponding to zero - needed because we want to remove the week of treatment which may be volatile and doesn't have enough data when aggregated at monthly basis
-    df3=df3[df3[f'{time_unit}_diff']!=0]
+    # df3=df3[df3[f'{time_unit}_diff']!=0]
         
     # create additional column corresponding for (1) post-treatment time & (2) in treated group
-    df3[f'{time_unit}s_since_treatment']=[max(0,x) for x in df3[time_unit_col]]
-    df3[f'{time_unit}s_since_treatment']=df3[f'{time_unit}s_since_treatment']*df3['in_treatment_group'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
-    df3['treatment_effect']=(df3[f'{time_unit}s_since_treatment']>0).astype(int) # whether unit has been treated (intercept of treatment)
+    
+    df3['post_treatment']=(df3[time_unit_col]>=0).astype(int)
+    df3['treatment_effect'] = df3['post_treatment'] * df3['in_treatment_group']
+
+    # df3[f'{time_unit}s_since_treatment']=[max(0,x) for x in df3[time_unit_col]]
+    # df3[f'{time_unit}s_since_treatment']=df3[f'{time_unit}s_since_treatment']*df3['in_treatment_group'] # all values<=1 now become 0 if they are assigned in control group (slope of treatment)
+    # df3['treatment_effect']=(df3[f'{time_unit}s_since_treatment']>0).astype(int) # whether unit has been treated (intercept of treatment)
+    
+    # df3.to_csv(join(save_dir,f'{identity}.df.tsv'),sep='\t',index=False)
         
     valid_columns = [
         'fri','fol','sta', # user activity history
         'profile_score', # identity score of previous profile
         'n_days_since_profile', # number of days since account was created
         'in_treatment_group', # is assigned into treatment group
+        # 'post_treatment', # time is past t0
         'treatment_effect', # has been treated
         'propensity_score',
-        f'{time_unit}s_since_treatment', # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
+        # f'{time_unit}s_since_treatment', # contains slope for post-treatment activities (positive slope means increasing trend, negative slope means decreasing trend)
         ]
     if rq=='language':
         valid_columns.append('activity_count') # add column for total activity count
     
-    # set up a regression task using statsmodels
-    scaler = StandardScaler()
+    # # set up a regression task using statsmodels
+    # scaler = StandardScaler()
     X = pd.concat(
         [
             df3[valid_columns],
             pd.get_dummies(df3['strata'],prefix='strata',drop_first=True), # week for when profile was updated
             pd.get_dummies(df3['week_treated'],prefix='week_treated',drop_first=True), # week for when profile was updated
-            pd.get_dummies(df3[f'{time_unit}_diff'],prefix=f'{time_unit}_diff',drop_first=True),
+            pd.get_dummies(df3[time_unit_col],prefix=time_unit_col,drop_first=True),
         ],
         axis=1
     )
     y = df3.score
     groups=df3.user_id
-    X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
-    # optional-normalize the activity count if language&count
-    if (rq=='language'):
-        X['activity_count']=[np.log(x+0.1) for x in X['activity_count']]
+    # X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
+    # # optional-normalize the activity count if language&count
+    # if (rq=='language'):
+    #     X['activity_count']=[np.log(x+0.1) for x in X['activity_count']]
     X = sm.add_constant(X)
     print(f"Starting regression for identity language change in {tweet_type}:{identity}")
+    print(X.shape,' total features')
 
     # run model 
     if agg=='count':
@@ -173,12 +183,16 @@ def run_regression_worker(rq, time_unit, agg, est, identity, tweet_type, model_t
             model=GEE(endog=y, exog=X, groups=groups, family=sm.families.Poisson())
         elif model_type=='glm':
             model = sm.GLM(endog=y, exog=X, family=sm.families.Poisson())
-        result=model.fit(maxiter=10000)
+        try:
+            result=model.fit(maxiter=10000)
+        except:
+            print("Model can't be learned!")
+            return
 
     else:
         model=sm.MixedLM(endog=y, exog=X, groups=groups)
         result=model.fit_regularized(maxiter=10000)
-    print(result.summary2())
+    # print(result.summary2())
     # llr_pval=round(result.llr_pvalue,3)
 
     save_file=join(save_dir,f'summary.{identity}.df.tsv')
@@ -913,7 +927,7 @@ def run_regression(idx=None):
     settings=[]
     inputs = []
     for est in ['abs']:
-        for time_unit in ['month','week']:
+        for time_unit in ['month']:
             for rq in ['language','activity']:
                 for model_type in ['gee']:
                 # for model_type in ['gee','poisson']:
@@ -924,6 +938,7 @@ def run_regression(idx=None):
     print('settings:',settings)
     for est,time_unit,rq,model_type in settings:
         for agg in ['count']:
+                # for tweet_type in ['tweet']:
                 for tweet_type in ['tweet','retweet']:
                     for identity in identities:
                         inputs.append((rq, time_unit, agg, est, identity, tweet_type, model_type))
@@ -1053,8 +1068,8 @@ if __name__=='__main__':
     # else:
     
     
-    # run_regression()
+    run_regression()
     # run_past_regression()
-    run_api_offensive_regression()
+    # run_api_offensive_regression()
     # run_offensive_regression()
     # run_weekly_regression()
