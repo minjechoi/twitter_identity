@@ -30,11 +30,12 @@ def get_emoji_regexp():
     pattern = u'(' + u'|'.join(re.escape(u) for u in emojis) + u')'
     return re.compile(pattern)
 
-class IdentityExtactor:    
+class IdentityExtractor:    
     def __init__(self, include_emojis=False):
         self.include_emojis=include_emojis
         self.identity2extractor = {
             'gender':self.extract_gender,
+            'sexuality':self.extract_sexuality,
             'age':self.extract_age,
             'ethnicity':self.extract_ethnicity,
             'religion':self.extract_religion,
@@ -65,7 +66,7 @@ class IdentityExtactor:
         return spl
 
     def extract_gender(self, text):
-        """Function for extracting phrases indicative of preferred gender of sexuality
+        """Function for extracting phrases indicative of displayed gender
 
         Args:
             text (_type_): Twitter bio string
@@ -91,7 +92,7 @@ class IdentityExtactor:
             results.append(('women',phrase))
 
         # nonbinary pronouns
-        reg = re.compile(r'\b(?:he|him|his|she|hers?|they|them|their)\s?(?:/|\s)?\s?(?:they|them|theirs?)\b')
+        reg = re.compile(r'\b(?:(?:he|him|his|she|hers?|they|them|their)\s?(?:/|\s)?\s?(?:they|them|theirs?))\b')
         res = reg.findall(text)
         for phrase in res:
             results.append(('nonbinary',phrase))
@@ -107,6 +108,35 @@ class IdentityExtactor:
             return '|'.join(['gender_'+cat+':'+V for cat,V in cat2phrases.items()])
         else:
             return
+
+    def extract_sexuality(self, text):
+        """Function for extracting phrases indicative of sexuality
+
+        Args:
+            text (_type_): Twitter bio string
+
+        Returns:
+            _type_: Formatted string listing all identities
+        """
+        
+        results = []
+        text=text.lower()
+
+        ## step 1: for substring-level
+        reg=re.compile(r'\b((?:a|pan|bi)(?:-|\s)?sexual|^(?:pan|bi|trans)$|lgbt\w+|gay|lesbian|queer|trans(?:exual|gender))\b')
+        substrings = self.split_description_to_substrings(text)
+
+        for substring in substrings:
+            res = reg.findall(substring)
+            if res:
+                results.extend(res)
+                
+        if results:
+            results = list(set(results))
+            return 'sexuality_lgbt:%s'%(','.join(results))
+        else:
+            return
+
 
     def extract_age(self, text):
         """Function for extracting phrases indicative of age
@@ -235,10 +265,12 @@ class IdentityExtactor:
         text=text.lower()
         results = []
 
-        re_cat = re.compile(r"\b(jesus|bible|catholic|christ(?:ian(?:ity)?)?|church|psalms?|philippians|romans|proverbs)\b")
-        re_mus = re.compile(r"\b(allah|muslim|islam(?:ic)?|quran|koran|hadith|prophet/s?muhammad)\b")
-        re_ath = re.compile(r"\b(atheis(?:t|m))\b")
-        re_hin = re.compile(r"\b(hind(?:i|u(?:ism)?))\b")
+        # re_cat = re.compile(r"\b(jesus|bible|catholic|christ(?:ian(?:ity)?)?|church|psalms?|philippians|romans|proverbs)\b")
+        re_cat = re.compile(r"\b(jesus|catholic|christ(?:ian)?|church|psalm|philippians|romans|proverbs)\b")
+        # re_mus = re.compile(r"\b(allah|muslim|islam(?:ic)?|quran|koran|hadith|prophet/s?muhammad)\b")
+        re_mus = re.compile(r"\b(allah|muslim)\b")
+        re_ath = re.compile(r"\b(atheist)\b")
+        re_hin = re.compile(r"\b(hindu(?:ism)?)\b")
         re_gen = re.compile(r"\b(god's|(?:of|for) god|god (?:comes )?first|god is)\b")
         # re_list=[
         #     re.compile(r"\b(allah|athies(?:t|m)|catholic|christ(?:ian(?:ity)?)?|church|god's|(?:of|for) god|god (?:comes )?first|god is|muslim|psalms?|philippians)\b")
@@ -251,7 +283,7 @@ class IdentityExtactor:
 
         for reg,subcategory in zip(
             [re_cat,re_mus,re_hin,re_ath,re_gen],
-            ['cath/christ','islam','hinduism','atheism','general']):
+            ['cathchrist','islam','hinduism','atheism','general']):
             res = reg.findall(text)
             if res:
                 flag=False
@@ -352,79 +384,176 @@ class IdentityExtactor:
             return
 
     def extract_occupation(self, text):
-        text=text.lower()
-        results = []
+        """
+        Follows the taxonomy from 2018 Standard Occupational Classification (SOC) taxonomy
+        """
         
         text=text.lower()
-
+        results = []
+                
         substrings = self.split_description_to_substrings(text)
         for substring in substrings:
             # remove false phrases
-            if re.findall(r'(future|\baspir|\bex(-|\s)|former)',substring):
+            if re.findall(r'(future|\baspir|\bex(-|\s)|former|past\b|fake)',substring):
                 continue
             
-            # business-related
-            reg_business = re.compile(r'(?:accountant|trader|investor|banker|analyst|ceo|executive officer|entrepreneur|financial advisor|marketer)\b')
-            res = reg_business.findall(substring)
-            if res:
-                results.append(('business',','.join(res)))
+            # 11-0000 Management Occupations
+            reg_management = re.compile(r'\b(?:manager|director|managing (?:editor|director|partner)|ceo|(?:co(?:\s|-)?founder|entrepreneur|real estate))\b')
 
-            # influencer
-            reg_influencer = re.compile(r'(?:streamer|youtuber|podcaster|influencer|(?:twitch|discord) partner)')
-            res = reg_influencer.findall(substring)
-            if res:
-                results.append(('influencer',','.join(res)))
+            # 13-0000 Business and Financial Operations Occupations
+            reg_business = re.compile(r'\b(?:analyst|accountant|investor|investment)\b')
+            
+            # 15-0000 Computer and Mathematical Occupations
+            reg_computer = re.compile(r'\b(?:dev|developer|programmer|software engineer|(?:data|cloud) architect)\b')
 
-            # healthcare
-            reg_healthcare = re.compile(r'(?:dentist|doctor|nurse|physician|pharmacist|therapist|counselor|psychiatrist|dermatologist|veterinarian)\b')
+            # 17-0000 Architecture and Engineering Occupations
+            reg_engineering = re.compile(r'\b(?:engineer(?:ing)?|architect)\b')
+
+            # 19-0000 Life, Physical, and Social Science Occupations
+            reg_science = re.compile(r'\b(?:researcher|scholar|scientist)\b')
+
+            # 21-0000 Community and Social Service Occupations
+            reg_community = re.compile(r'\b(?:social worker|counselor)\b')
+
+            # 23-0000 Legal Occupations
+            reg_legal = re.compile(r'\b(?:lawyer|attorney)\b')
+
+            # 25-0000 Educational Instruction and Library Occupations
+            reg_education = re.compile(r'\b(?:educator|instructor|lecturer|prof|professor|teacher)\b')
+
+            # 27-0000 Arts, Design, Entertainment, Sports, and Media Occupations
+            reg_art = re.compile(r'\b(?:producer|actor|actress|designer|artist|singer|songwriter|coach|illustrator|musician|photographer|photography|animator|video editor|athlete|dancer|reporter|journalist|journalism|reporter|writer|author|blogger|film\s?maker|dj|trainer|influencer|twitch affiliate|streamer|podcaster|content creator)\b')
+
+            # 29-0000 Healthcare Practitioners and Technical Occupations
+            reg_healthcare = re.compile(r'\b(?:nurse|nursing|therapist|practitioner|health\s?care)\b')
+
+            # 43-0000 Office and Administrative Support Occupations
+            reg_administrative = re.compile(r'\b(?:(?:public|civil) servant)\b')
+
+            # Get phrases
+            res=reg_management.findall(substring)
+            if res:
+                results.append(('management',res))
+                
+            res=reg_business.findall(substring)
+            if res:
+                results.append(('business',res))
+
+            res=reg_computer.findall(substring)
+            if res:
+                results.append(('computer',res))
+            
+            res=reg_engineering.findall(substring)
+            if res:
+                if reg_computer.findall(substring):
+                    pass
+                else:
+                    results.append(('engineering',res))
+            
+            res=reg_science.findall(substring)
+            if res:
+                results.append(('science',res))
+                
+            res=reg_community.findall(substring)
+            if res:
+                results.append(('community',res))
+
+            res=reg_legal.findall(substring)
+            if res:
+                results.append(('legal',res))
+
+            res=reg_education.findall(substring)
+            if res:
+                results.append(('education',res))
+            
+            res=reg_art.findall(substring)
+            if res:
+                results.append(('art',res))
+
             res=reg_healthcare.findall(substring)
             if res:
-                res2=[]
-                for phrase in res:
-                    if phrase=='doctor':
-                        if re.findall(r'(doctor strange|doctor who)',text):
-                            continue
-                    res2.append(phrase)
-                results.append(('healthcare',','.join(res2)))
+                results.append(('healthcare',res))
 
-            # academia
-            reg_academia = re.compile(r'\b(?:(?:\w+)?scientist|teacher|researcher|research assistant|scholar|educator|instructor|lecturer|prof|professor)\b')
-            res=reg_academia.findall(substring)
+            res=reg_administrative.findall(substring)
             if res:
-                results.append(('academia',','.join(res)))
+                results.append(('administrative',res))
 
-            # art-related
-            reg_art = re.compile(r'\b(?:artist|animator|creator|dancer|designer|dj|filmmaker|illustrator|musician|photographer|producer|rapper|singer|songwriter)\b')
-            res=reg_art.findall(substring)
-            if res:
-                results.append(('art',','.join(res)))
 
-            # tech
-            reg_art = re.compile(r'\b(?:engineer|architect|programmer|developer|technician)\b')
-            res=reg_art.findall(substring)
-            if res:
-                results.append(('tech',','.join(res)))
+            ## Previous list
+            # # academia
+            # reg_academia = re.compile(r'\b(?:(?:\w+)?scientist|^i (?:teach|study)|^teaching|^research|teacher|researcher|research assistant|scholar|educator|instructor|lecturer|prof|professor)\b')
+            # res=reg_academia.findall(substring)
+            # if res:
+            #     results.append(('academia',','.join(res)))
+            
+            # # business-related
+            # reg_business = re.compile(r'(?:business owner|ceo|co(?:\s|-)?founder|entrepreneur|investor|)\b')
+            # res = reg_business.findall(substring)
+            # if res:
+            #     results.append(('business',','.join(res)))
+            # # reg_business = re.compile(r'(?:accountant|trader|investor|banker|analyst|ceo|executive officer|entrepreneur|financial advisor|marketer)\b')
+            # # res = reg_business.findall(substring)
+            # # if res:
+            # #     results.append(('business',','.join(res)))
 
-            # news & legal
-            reg_news = re.compile(r'\b(?:journalist|reporter|correspondent|attorney|lawyer|spokesperson|paralegal)\b')
-            res=reg_news.findall(substring)
-            if res:
-                results.append(('news',','.join(res)))
+            # # influencer
+            # reg_influencer = re.compile(r'(?:streamer|youtuber|podcaster|influencer|(?:twitch|discord) partner)')
+            # res = reg_influencer.findall(substring)
+            # if res:
+            #     results.append(('influencer',','.join(res)))
 
-            # services
-            reg_services = re.compile(r'\b(?:coach|attendant|colonel|lieutenant|sergeant|police officer|trainer|(?:hair)?stylist|clerk|tutor|public servant|barber|cosmetologist|(?:\w+care|social|service) (?:worker|professional))\b')
-            res=reg_services.findall(substring)
-            if res:
-                results.append(('services',','.join(res)))
+            # # healthcare
+            # reg_healthcare = re.compile(r'(?:dentist|doctor|nurse|physician|pharmacist|therapist|counselor|psychiatrist|dermatologist|veterinarian)\b')
+            # res=reg_healthcare.findall(substring)
+            # if res:
+            #     res2=[]
+            #     for phrase in res:
+            #         if phrase=='doctor':
+            #             if re.findall(r'(\bmy |doctor strange|doctor who)',text):
+            #                 continue
+            #         res2.append(phrase)
+            #     results.append(('healthcare',','.join(res2)))
 
-            # writing
-            reg_writing = re.compile(r'\b(?:writer|blogger|editor|author|poet|publisher|playwright)\b')
-            res=reg_writing.findall(substring)
-            if res:
-                results.append(('writing',','.join(res)))
+            # # art-related
+            # reg_art = re.compile(r'\b(?:artist|animator|creator|dancer|designer|dj|filmmaker|illustrator|musician|photographer|producer|rapper|singer|songwriter)\b')
+            # res=reg_art.findall(substring)
+            # if res:
+            #     results.append(('art',','.join(res)))
 
-        if results:
-            return '|'.join(['occupation_'+cat+':'+V for cat,V in results])
+            # # tech
+            # reg_art = re.compile(r'\b(?:engineer|architect|programmer|developer|technician)\b')
+            # res=reg_art.findall(substring)
+            # if res:
+            #     results.append(('tech',','.join(res)))
+
+            # # news & legal
+            # reg_news = re.compile(r'\b(?:journalist|reporter|correspondent|attorney|lawyer|spokesperson|paralegal)\b')
+            # res=reg_news.findall(substring)
+            # if res:
+            #     results.append(('news',','.join(res)))
+
+            # # services
+            # reg_services = re.compile(r'\b(?:coach|attendant|colonel|lieutenant|sergeant|police officer|trainer|(?:hair)?stylist|clerk|tutor|public servant|barber|cosmetologist|(?:\w+care|social|service) (?:worker|professional))\b')
+            # res=reg_services.findall(substring)
+            # if res:
+            #     results.append(('services',','.join(res)))
+
+            # # writing
+            # reg_writing = re.compile(r'\b(?:writer|blogger|editor|author|poet|publisher|playwright)\b')
+            # res=reg_writing.findall(substring)
+            # if res:
+            #     results.append(('writing',','.join(res)))
+            
+        out = {}
+        for cat,res in results:
+            if cat not in out:
+                out[cat]=[]
+            out[cat].extend(res)
+        for cat,res in out.items():
+            out[cat]=list(set(res))
+
+        if len(out):
+            return '|'.join(['occupation_'+cat+':'+','.join(V) for cat,V in out.items()])
         else:
             return
 
@@ -435,13 +564,16 @@ class IdentityExtactor:
         # conservative pronouns
         reg_negate = re.compile(r'(?:\bnot?\b|\bnever|hat(?:e|red|ing)|\banti|\bex\b|idiot|stupid|dumb|fool|wrong|enemy|worst|dump|dislike|detest|despise|troll|impeach|imprison|fuck|danger|threat|terrible|horrible|survive|shit)')
         reg_con_list=[
-            re.compile(r'\b(?:maga(?:2020)?|(?:1|2)a|kag(?:2020)?|build\s?the\s?wall|america\s?first|\bpro(?:\s|-)?life|make\s?america\s?great\s?again)\b'),
-            re.compile(r'\b(?:(?:neo-?)?conservative|traditionalist|nationalist|libertarian|right(?:-|\s)?(?:ist|wing|republican))\b'),
+            # re.compile(r'\b(?:maga(?:2020)?|(?:1|2)a|kag(?:2020)?|build\s?the\s?wall|america\s?first|\bpro(?:\s|-)?life|make\s?america\s?great\s?again)\b'),
+            re.compile(r'\b(?:conservative|maga|libertarian|right(?:-|\s)?(?:ist|wing)|republican)\b'),
+            # re.compile(r'\b(?:(?:neo-?)?conservative|traditionalist|nationalist|libertarian|right(?:-|\s)?(?:ist|wing|republican))\b'),
         ]
 
         reg_lib_list=[
             re.compile(
-                r'\b(?:liberal|progressive|socialist|democrat|left(?:\s|-)?(?:wing|ist)|blue\s?wave|equal\s?(?:ist|ism|ity|right)|marxist)\b'),
+                r'\b(?:#bidenharris(?:\w+)?|liberal|progressive|democrat|left(?:\s|-)?(?:wing|ist))\b'),
+            # re.compile(
+            #     r'\b(?:#bidenharris(?:\w+)?|liberal|progressive|socialist|democrat|left(?:\s|-)?(?:wing|ist)|blue\s?wave|equal\s?(?:ist|ism|ity|right)|marxist)\b'),
         ]
         
         substrings = self.split_description_to_substrings(text)
@@ -463,13 +595,14 @@ class IdentityExtactor:
                     else:
                         results.append(('liberal',phrase))
 
-            reg_blm_list=[
-                re.compile(r'(?:black\s?lives\s?matter|blm)')
+            reg_activism_list=[
+                re.compile(r'(?:black\s?lives\s?matter|blm)'),
+                re.compile(f'\b(acab|activism|activist|feminist|feminism|#resist)\b')
             ]
-            for reg in reg_blm_list:
+            for reg in reg_activism_list:
                 res=reg.findall(substring)
                 for phrase in res:
-                    results.append(('blm',phrase))
+                    results.append(('activism',phrase))
 
         if results:
             cat2phrases={}
@@ -508,9 +641,9 @@ class IdentityExtactor:
         results = []
         
         re_list = [
-            re.compile(
-                r'\b(surviv(?:ed|or)|depress(?:ed|ion)|autis(?:m|tic)|anxiety|adhd|diabetes|fibromyalgia|cancer|trauma(?:tized|tizing)?|' + \
-                r'victim|brain injury|strokes|ptsd|chronic (?:pain|illness)|jobless|homeless|unemployed|disorder|dyslexi(?:a|c))\b')
+            re.compile(r'\b(?:depress(?:ed|ion)|autis(?:m|tic)|anxiety|adhd)\b')
+                # r'\b(surviv(?:ed|or)|depress(?:ed|ion)|autis(?:m|tic)|anxiety|adhd|diabetes|fibromyalgia|cancer|trauma(?:tized|tizing)?|' + \
+                # r'victim|brain injury|strokes|ptsd|chronic (?:pain|illness)|jobless|homeless|unemployed|disorder|dyslexi(?:a|c))\b')
         ]
         re_exclude_list = [
             re.compile(r'(zodiac)')
@@ -536,7 +669,7 @@ class IdentityExtactor:
 
 
 def test_individual_extraction(text,identity='gender'):
-    IdEx = IdentityExtactor()
+    IdEx = IdentityExtractor()
     return IdEx.identity2extractor[identity](text)
 
 def extract_identities_from_file(
@@ -646,7 +779,7 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
     # finally:
     pool.close()
     return
-            
+
 
 
 
