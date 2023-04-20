@@ -19,7 +19,9 @@ from tqdm import tqdm
 # from twitter_identity.utils.utils import get_weekly_bins,write_data_file_info
 
 ALL_IDENTITIES = [
-    'gender', 'age', 'ethnicity', 'religion',
+    'gender', 'sexuality', 'age', 
+    # 'ethnicity', 
+    'religion',
     'relationship', 'education', 'occupation', 'political',
     'socialmedia', 'sensitive']
 
@@ -30,14 +32,14 @@ def get_emoji_regexp():
     pattern = u'(' + u'|'.join(re.escape(u) for u in emojis) + u')'
     return re.compile(pattern)
 
-class IdentityExtractor:    
+class IdentityExtractor:
     def __init__(self, include_emojis=False):
         self.include_emojis=include_emojis
         self.identity2extractor = {
             'gender':self.extract_gender,
             'sexuality':self.extract_sexuality,
             'age':self.extract_age,
-            'ethnicity':self.extract_ethnicity,
+            # 'ethnicity':self.extract_ethnicity,
             'religion':self.extract_religion,
             'relationship':self.extract_relationship,
             'education':self.extract_education,
@@ -124,19 +126,22 @@ class IdentityExtractor:
 
         ## step 1: for substring-level
         reg=re.compile(r'\b((?:a|pan|bi)(?:-|\s)?sexual|^(?:pan|bi|trans)$|lgbt\w+|gay|lesbian|queer|trans(?:exual|gender))\b')
+        reg_negate = re.compile(r'support|advocate|friendly|sex|nsfw|content|rights?$')
         substrings = self.split_description_to_substrings(text)
 
         for substring in substrings:
             res = reg.findall(substring)
             if res:
-                results.extend(res)
+                if reg_negate.findall(substring):
+                    continue
+                else:
+                    results.extend(res)
                 
         if results:
             results = list(set(results))
             return 'sexuality_lgbt:%s'%(','.join(results))
         else:
             return
-
 
     def extract_age(self, text):
         """Function for extracting phrases indicative of age
@@ -413,7 +418,7 @@ class IdentityExtractor:
             reg_science = re.compile(r'\b(?:researcher|scholar|scientist)\b')
 
             # 21-0000 Community and Social Service Occupations
-            reg_community = re.compile(r'\b(?:social worker|counselor)\b')
+            reg_community = re.compile(r'\b(?:social worker|counsel(?:or|ing))\b')
 
             # 23-0000 Legal Occupations
             reg_legal = re.compile(r'\b(?:lawyer|attorney)\b')
@@ -425,58 +430,90 @@ class IdentityExtractor:
             reg_art = re.compile(r'\b(?:producer|actor|actress|designer|artist|singer|songwriter|coach|illustrator|musician|photographer|photography|animator|video editor|athlete|dancer|reporter|journalist|journalism|reporter|writer|author|blogger|film\s?maker|dj|trainer|influencer|twitch affiliate|streamer|podcaster|content creator)\b')
 
             # 29-0000 Healthcare Practitioners and Technical Occupations
-            reg_healthcare = re.compile(r'\b(?:nurse|nursing|therapist|practitioner|health\s?care)\b')
+            reg_healthcare = re.compile(r'\b(?:nurse|nursing|therapist|practitioner|doctor|health\s?care)\b')
 
             # 43-0000 Office and Administrative Support Occupations
             reg_administrative = re.compile(r'\b(?:(?:public|civil) servant)\b')
 
-            # Get phrases
+            # Get phrases            
             res=reg_management.findall(substring)
             if res:
-                results.append(('management',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('management',res))
                 
             res=reg_business.findall(substring)
             if res:
-                results.append(('business',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('business',res))
 
             res=reg_computer.findall(substring)
             if res:
-                results.append(('computer',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('computer',res))
             
             res=reg_engineering.findall(substring)
             if res:
                 if reg_computer.findall(substring):
+                    pass
+                elif re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
                     pass
                 else:
                     results.append(('engineering',res))
             
             res=reg_science.findall(substring)
             if res:
-                results.append(('science',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('science',res))
                 
             res=reg_community.findall(substring)
             if res:
-                results.append(('community',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('community',res))
 
             res=reg_legal.findall(substring)
             if res:
-                results.append(('legal',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b)|ace attorney)',substring):
+                    pass
+                else:
+                    results.append(('legal',res))
 
             res=reg_education.findall(substring)
             if res:
-                results.append(('education',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('education',res))
             
             res=reg_art.findall(substring)
             if res:
-                results.append(('art',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|fav\w?|fan|fake))',substring):
+                    pass
+                else:
+                    results.append(('art',res))
 
             res=reg_healthcare.findall(substring)
             if res:
-                results.append(('healthcare',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b)|doctor who)',substring):
+                    pass
+                else:
+                    results.append(('healthcare',res))
 
             res=reg_administrative.findall(substring)
             if res:
-                results.append(('administrative',res))
+                if re.findall(r'(\b(future|aspir\w+|ex(?:-|\s)|former|prev\w?|my\b))',substring):
+                    pass
+                else:
+                    results.append(('administrative',res))
 
 
             ## Previous list
@@ -597,7 +634,7 @@ class IdentityExtractor:
 
             reg_activism_list=[
                 re.compile(r'(?:black\s?lives\s?matter|blm)'),
-                re.compile(f'\b(acab|activism|activist|feminist|feminism|#resist)\b')
+                re.compile(f'\b(?:acab|activism|activist|feminist|feminism|#resist)\b')
             ]
             for reg in reg_activism_list:
                 res=reg.findall(substring)
@@ -672,62 +709,93 @@ def test_individual_extraction(text,identity='gender'):
     IdEx = IdentityExtractor()
     return IdEx.identity2extractor[identity](text)
 
-def extract_identities_from_file(
-    input_file:str,
-    output_file:str,
-    identities:list
-    ):
-    """Reads a file, extracts all identities, and saves it to another file
-    Args:
-        input_file (str): directory of input file
-        output_file (str): directory of output file
-        identities (list): list of identities (str) to include
-    """
-    print(f"""
-    input: {input_file}
-    output: {output_file}
-    identity: {identities[0]}
-    """)
+# def extract_identities_from_file(
+#     input_file:str,
+#     output_file:str,
+#     identities:list
+#     ):
+#     """Reads a file, extracts all identities, and saves it to another file
+#     Args:
+#         input_file (str): directory of input file
+#         output_file (str): directory of output file
+#         identities (list): list of identities (str) to include
+#     """
+#     print(f"""
+#     input: {input_file}
+#     output: {output_file}
+#     identity: {identities[0]}
+#     """)
     
-    # create object
-    IdEx = IdentityExtactor()
+#     # create object
+#     IdEx = IdentityExtactor()
     
-    # run each line
-    if input_file.endswith('.gz'):
-        f=gzip.open(input_file,'rt')
-    else:
-        f=open(input_file,'r')
-    outf = gzip.open(output_file,'wt')
+#     # run each line
+#     if input_file.endswith('.gz'):
+#         f=gzip.open(input_file,'rt')
+#     else:
+#         f=open(input_file,'r')
+#     outf = gzip.open(output_file,'wt')
 
-    cnt = 0
-    ts = input_file.split('.')[-3]
-    for ln,line in enumerate(f):
-        obj0 = json.loads(line)
-        uid,description = obj0['id_str'],obj0['description']
+#     cnt = 0
+#     ts = input_file.split('.')[-3]
+#     for ln,line in enumerate(f):
+#         obj0 = json.loads(line)
+#         uid,description = obj0['id_str'],obj0['description']
 
-        obj = {}
-        # run identity extraction
-        if type(description)==str:
-            for identity in identities:
-                extractor = IdEx.identity2extractor[identity]
-                res = extractor(description)
-                if res:
-                    obj[identity] = res.lower()
+#         obj = {}
+#         # run identity extraction
+#         if type(description)==str:
+#             for identity in identities:
+#                 extractor = IdEx.identity2extractor[identity]
+#                 res = extractor(description)
+#                 if res:
+#                     obj[identity] = res.lower()
             
-        # save results
-        line_out = []
-        for identity,v in obj.items():
-            line_out.append(v)
-        line = f'{uid}\t{ts}\t%s\n'%'|'.join(line_out)
-        outf.write(line)
-        if len(obj):
-            cnt+=1
+#         # save results
+#         line_out = []
+#         for identity,v in obj.items():
+#             line_out.append(v)
+#         line = f'{uid}\t{ts}\t%s\n'%'|'.join(line_out)
+#         outf.write(line)
+#         if len(obj):
+#             cnt+=1
 
-    f.close()
+#     f.close()
      
-    print(f'Saved to {output_file} {cnt}/{ln}!')    
-    # write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
+#     print(f'Saved to {output_file} {cnt}/{ln}!')    
+#     # write_data_file_info(__file__,extract_identities_from_file.__name__,output_file,[input_file])
+#     return
+
+def extract_identities_from_file(input_file,output_file):
+    # load extractor
+    IdEx = IdentityExtractor()
+    
+    # get number of lines
+    with gzip.open(input_file,'rt') as f:
+        for ln,_ in enumerate(f):
+            continue
+    n_lines = ln
+    
+    # get phrases
+    cnt=0
+    with gzip.open(input_file,'rt') as f,\
+        gzip.open(output_file,'wt') as outf:
+            for line in tqdm(f,total=n_lines):
+                cnt+=1
+                # if cnt>=10000:
+                #     break
+                uid,dt,desc=line.split('\t')
+                desc=desc.lower().strip()
+                obj = {}
+                for identity in ALL_IDENTITIES:
+                    extractor = IdEx.identity2extractor[identity]
+                    res = extractor(desc)
+                    if res:
+                        obj[identity]=res.lower()
+                res = sorted(list(obj.values()))
+                outf.write('\t'.join([uid,dt,desc]+res)+'\n')                    
     return
+    
 
 def run_multiprocessing(input_dir, output_dir, identities=ALL_IDENTITIES, modulo:int=None):
     from multiprocessing import Pool
@@ -780,44 +848,61 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
     pool.close()
     return
 
-
-
-
-
-
-
-
+def post_processing(input_file,output_file):
+    out={}
+    unique_ids={}
+    # get all identities of a user
+    with gzip.open(input_file,'rt') as f:
+        for line in f:
+            line=line.split('\t')
+            uid,dt,desc=line[:3]
+            if uid not in out:
+                out[uid]=[]
+                unique_ids[uid]=[]
+            out[uid].append(line[1:])
+            unique_ids[uid].extend([v.split(':')[0] for v in line[3:]])
+    
+    # get only users with no conflicting identities
+    with gzip.open(output_file,'wt') as outf:
+        for uid,V in unique_ids.items():
+            S = set(V) # unique ids through all profiles
+            # political
+            if ('political_liberal' in S) and ('political_conservative' in S):
+                continue
+            if ('political_antiliberal' in S) or ('political_anticonservative' in S):
+                continue
+            # age count
+            age_cnt=0
+            for age in ['13-17','18-24','25-34','35-49','50+']:
+                if f'age_{age}' in S:
+                    age_cnt+=1
+            if age_cnt>1:
+                continue
+            # gender pronouns
+            gender_cnt=0
+            for gender in ['men','women','nonbinary']:
+                if f'gender_{gender}' in S:
+                    gender_cnt+=1
+            if gender_cnt>1:
+                continue
+            
+            lines = out[uid]
+            for line in lines:
+                outf.write('\t'.join([uid]+line))
+    
+    return
 
 if __name__=='__main__':
-    # test 
-    # text='23yr | he/him | cancer'
-    # res=test_individual_extraction(text,'gender')
-    # print(res)
-
-    # input_file = '/shared/3/projects/bio-change/data/interim/description_changes/splitted/0_changes_aa'
-    # output_file = '/shared/3/projects/bio-change/data/interim/description_changes/test.json.gz'
-    # extract_identities_from_file(
-    #     input_file,
-    #     output_file,
-    #     identities=['religion'])
-
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--input_dir', default='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets')
-    # parser.add_argument('--output_dir', default='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/3.all-identities')
-    # parser.add_argument('--modulo', type=int, default=None)
-    # parser.add_argument('--identities', type=str, default=None)
-    # args = parser.parse_args()
-
-    # if args.identities:
-    #     identities = args.identities.split(',')
-    # else:
-    identities = ALL_IDENTITIES
     
-    load_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets'
-    save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/3.all-identities'
-    if len(sys.argv)==2:
-        set_multiprocessing(fun=extract_identities_from_file,load_dir=load_dir,save_dir=save_dir, modulo=sys.argv[1])
-    else:
-        set_multiprocessing(fun=extract_identities_from_file,load_dir=load_dir,save_dir=save_dir)
-
-    # run_multiprocessing(args.input_dir, args.output_dir, identities, args.modulo)
+    # extract identities from the files
+    # input_file='/shared/3/projects/bio-change/data/interim/description_changes/03.filtered'
+    # output_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted'
+    # extract_identities_from_file(input_file,output_file)    
+    
+    # post-processing: removing cases where 2+ conflicting identities appear in the same person
+    input_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted/description_changes_0_changes.tsv.gz'
+    output_file='/shared/3/projects/bio-change/data/interim/description_changes/05.post-processed/description_changes_0_changes.tsv.gz'
+    post_processing(input_file,output_file)    
+    input_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted/description_changes_1_change.tsv.gz'
+    output_file='/shared/3/projects/bio-change/data/interim/description_changes/05.post-processed/description_changes_1_change.tsv.gz'
+    post_processing(input_file,output_file)
