@@ -1,4 +1,5 @@
 import gzip
+import re
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -10,13 +11,20 @@ from tqdm import tqdm
 from pytorch_lightning import LightningDataModule
 
 class TextDataset(Dataset):
-    def __init__(self, data_file):
+    def __init__(self, data_file, col_name='text'):
         data = []
-        with gzip.open(data_file,'rt') as f:
-            for line in f:
-                uid,label,text=line.split('\t')
-                text = text.strip()
-                data.append((text,int(label)))
+        df=pd.read_csv(data_file,sep='\t')
+        for label,text in df[['label',col_name]].values:
+            text=re.sub(r'(URL|@username)','',text).strip()
+            text = text.strip()
+            data.append((text,int(label)))
+            
+        # with gzip.open(data_file,'rt') as f:
+        #     for line in f:
+        #         uid,label,text=line.split('\t')
+        #         text=re.sub(r'(URL|@username)','',text).strip()
+        #         text = text.strip()
+        #         data.append((text,int(label)))
     
         self.data = data
         
@@ -89,15 +97,27 @@ class DataModuleForIdentityClassification(LightningDataModule):
             self.datasets['predict'] = PredictTextDataset(
                 data_file = self.hparams.predict_file,
                 col_name=self.hparams.col_name)
+            # self.datasets['predict'] = TextDataset(
+            #     data_file = self.hparams.predict_file,
+            #     col_name=self.hparams.col_name)
         
-        else:            
-            self.datasets = {
-                'train': TextDataset(data_file=self.hparams.train_file),
-                'val': TextDataset(data_file=self.hparams.val_file),
-                'test': TextDataset(data_file=self.hparams.test_file),            
-            }        
-            # save class weights
-            self.weight = self.datasets['train'].weight
+        else:
+            if stage=='fit':
+                self.datasets = {
+                    'train': TextDataset(data_file=self.hparams.train_file),
+                    'val': TextDataset(data_file=self.hparams.val_file),
+                    'test': TextDataset(data_file=self.hparams.test_file),            
+                }        
+                # save class weights
+                self.weight = self.datasets['train'].weight
+            elif stage=='test':
+                self.datasets = {
+                    'test': TextDataset(data_file=self.hparams.test_file),            
+                }
+            elif stage=='predict':
+                self.datasets = {
+                    'predict': TextDataset(data_file=self.hparams.predict_file),            
+                }
         
         # load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(

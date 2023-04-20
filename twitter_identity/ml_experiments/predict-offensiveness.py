@@ -50,21 +50,50 @@ if __name__=='__main__':
     parser = DataModuleForIdentityClassification.add_model_specific_args(parser)
     args = parser.parse_args()
     
-    args.tweet_type = 'tweet'
-    args.activity_type = 'activities_origin'
+    # args.tweet_type = 'tweet'
+    # args.activity_type = 'activities_origin'
     
-        
-    args.predict_file = f'/shared/3/projects/bio-change/data/interim/1000-samples-per-identity/replies.df.tsv'
-    args.default_root_dir = '/shared/3/projects/bio-change/data/interim/1000-samples-per-identity'
-    args.save_file = 'predicted_scores-replies.txt'
-    
-    # get checkpoint path
-    
+    # get checkpoint path    
     args.devices=1
     args.precision=16
     args.accelerator='gpu'
     args.model_name_or_path = 'cardiffnlp/twitter-roberta-base-offensive'
     
+    identity_dir='/shared/3/projects/bio-change/data/interim/activities_by_treated_users/all_tweets'
     
-    # get all identities
-    predict(args)
+    if args.identity=='all':
+        identities = sorted(set([x.split('.')[1] for x in sorted(os.listdir(identity_dir))]))
+    else:
+        identities = [args.identity]
+            
+    if args.activity_type=='all':
+        activity_types = ['activities_made','activities_origin']
+    else:
+        activity_types = [args.activity_type]
+    
+    if args.tweet_type=='all':
+        tweet_types = ['tweet','retweet']
+    else:
+        tweet_types = [args.tweet_type]
+    
+    for identity in identities:
+        for activity_type in activity_types:
+            for tweet_type in tweet_types:
+                args.predict_file=f'/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/tweets_by_identity/{activity_type}.{identity}.{tweet_type}.df.tsv.gz'
+                args.default_root_dir = '/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/offensiveness-scores'
+                args.save_file = f'{activity_type}.{identity}.{tweet_type}.txt'
+                    
+                # get all identities
+                predict(args)
+
+    # else:
+    #     args.predict_file=f'/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/identity_added-with_tweet_identity/mentions-from-api/aggregated-interactions/all_original_tweets.df.tsv'
+    #     args.default_root_dir = '/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/identity_added-with_tweet_identity/mentions-from-api/aggregated-interactions/'
+    #     args.save_file = 'offensive-original.txt'
+    #     # args.predict_file=f'/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/identity_added-with_tweet_identity/mentions-from-api/aggregated-interactions/all_replies.df.tsv'
+    #     # args.default_root_dir = '/shared/3/projects/bio-change/data/interim/treated-control-propensity-tweets/identity_added-with_tweet_identity/mentions-from-api/aggregated-interactions/'
+    #     # args.save_file = 'offensive-replies.txt'
+        
+    #     # get all identities
+    #     predict(args)
+        

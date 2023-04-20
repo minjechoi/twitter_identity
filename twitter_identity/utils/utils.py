@@ -116,8 +116,8 @@ def week_diff_to_month_diff(week):
 def get_identities():
     """Simply returns the list of identities
     """
-    user_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity'
-    identities = sorted([file.split('.')[1] for file in os.listdir(os.path.join(user_data_dir,'with_tweet_identity')) if file.startswith('all_covariates')])
+    user_data_dir='/shared/3/projects/bio-change/data/processed/matching/all-covariates'
+    identities = sorted([x.split('.')[0] for x in os.listdir(user_data_dir)])
     return identities
 
 if __name__=='__main__':
