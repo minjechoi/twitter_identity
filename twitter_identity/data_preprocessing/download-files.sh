@@ -1,0 +1,10 @@
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-02*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-03*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-05*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-06*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-07*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-08*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-09*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-10*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-11*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
+cp /nfs/locker/twitter-decahose-locker/2020/decahose.2020-12*.bz2 /scratch/drom_root/drom0/minje/bio-change/temp-tweets
