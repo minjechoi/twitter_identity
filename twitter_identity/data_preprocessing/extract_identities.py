@@ -39,7 +39,7 @@ class IdentityExtractor:
             'gender':self.extract_gender,
             'sexuality':self.extract_sexuality,
             'age':self.extract_age,
-            # 'ethnicity':self.extract_ethnicity,
+            'ethnicity':self.extract_ethnicity,
             'religion':self.extract_religion,
             'relationship':self.extract_relationship,
             'education':self.extract_education,
@@ -231,6 +231,7 @@ class IdentityExtractor:
         re_kor = re.compile(r'(\b(?:korean?)\b|🇰🇷)')
         re_jap = re.compile(r'(\b(?:japan(?:ese)?)\b|🇯🇵)')
         re_afr = re.compile(r'\b(african)\b')
+        re_bri = re.compile(r'(\b(?:british)\b|🇬🇧)')
         
         # re_list=[
         #     re.compile(r"\b(allah|athies(?:t|m)|catholic|christ(?:ian(?:ity)?)?|church|god's|(?:of|for) god|god (?:comes )?first|god is|muslim|psalms?|philippians)\b")
@@ -238,12 +239,12 @@ class IdentityExtractor:
         #     # re.compile(r'((?:romans|james|proverbs|isiah|galatians|ephesians|paul|john|mark|luke|psalms|genesis|corinthians|philippians) [0-9]+\:)')
         # ]
         re_exclude_list=[
-            re.compile(r'(food|music|football|culture|movie|tv|speak|talk|class|cuisine|university|north korea|(central|south) america|k(-|\s)?(pop|drama)|anime|manga|support|hate)')
+            re.compile(r'(food|music|football|culture|movie|tv|speak|talk|class|cuisine|university|north korea|(central|south) america|k(-|\s)?(pop|drama)|anime|manga|support|hate|british columbia)')
         ]
 
         for reg,subcategory in zip(
-            [re_ind,re_mex,re_irish,re_can,re_ger,re_usa,re_kor,re_jap,re_afr],
-            ['indian','mexican','irish','canadian','german','american','korean','japanese','african']):
+            [re_ind,re_mex,re_irish,re_can,re_ger,re_usa,re_kor,re_jap,re_afr,re_bri],
+            ['indian','mexican','irish','canadian','german','american','korean','japanese','african','british']):
             res = reg.findall(text)
             if res:
                 flag=False
@@ -881,6 +882,13 @@ def post_processing(input_file,output_file):
                 if f'gender_{gender}' in S:
                     gender_cnt+=1
             if gender_cnt>1:
+                continue
+            # ethnicity
+            eth_cnt=0
+            for ethnicity in['indian','mexican','irish','canadian','german','american','korean','japanese','african','british']:
+                if f'ethnicity_{ethnicity}' in S:
+                    eth_cnt+=1
+            if eth_cnt>1:
                 continue
             
             lines = out[uid]
