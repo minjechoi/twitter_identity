@@ -221,50 +221,47 @@ class IdentityExtractor:
         """
 
         results = []
-        text=text.lower()
+
+        re_ind = re.compile(r"(\b(?:indian?)\b|🇮🇳)")
+        re_mex = re.compile(r"(\b(?:m(?:é|e)xic(?:o|an))|🇲🇽)")
+        re_irish = re.compile(r"(\b(?:ireland|irish)\b|🇮🇪)")
+        re_can = re.compile(r"(\b(?:canada|canadian)\b|🇨🇦)")
+        re_ger = re.compile(r"(\b(?:germany?|deutsch)\b|🇩🇪)")
+        re_usa = re.compile(r'(\b(?:american?|usa)\b|🇺🇸)')
+        re_kor = re.compile(r'(\b(?:korean?)\b|🇰🇷)')
+        re_jap = re.compile(r'(\b(?:japan(?:ese)?)\b|🇯🇵)')
+        re_afr = re.compile(r'\b(african)\b')
         
-        re_list = [
-            re.compile(
-                r'\b(african|asian|hispanic|latin)'
-                # r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
-            ),
-            # re.compile(
-            #     r'\b(🇺🇸|🇬🇧|🇨🇦|🇮🇪|🇧🇷|🇲🇽|󠁧󠁢󠁧🇯🇵|🇪🇸|🇮🇹|🇫🇷|🇩🇪|🇳🇱|🇮🇳|🇮🇩|🇹🇷|🇸🇦|🇹🇭|🇵🇭|🇦🇷|🇰🇷|🇪🇬|🇲🇾|🇨🇴)',
-            # )
+        # re_list=[
+        #     re.compile(r"\b(allah|athies(?:t|m)|catholic|christ(?:ian(?:ity)?)?|church|god's|(?:of|for) god|god (?:comes )?first|god is|muslim|psalms?|philippians)\b")
+        #     # re.compile(r"\b(islam\w*|messiah|muslim|hind(?:u|i)\w*|christ(?:ian)|church|jesus|catholic|athies(?:t|m)|(?:of|for) god|god's|god (?:comes )?first|pastor|sermon)\b"),
+        #     # re.compile(r'((?:romans|james|proverbs|isiah|galatians|ephesians|paul|john|mark|luke|psalms|genesis|corinthians|philippians) [0-9]+\:)')
+        # ]
+        re_exclude_list=[
+            re.compile(r'(food|music|football|culture|movie|tv|speak|talk|class|cuisine|university|north korea|(central|south) america|k(-|\s)?(pop|drama)|anime|manga|support|hate)')
         ]
-        reg = re_list[0]
-        
-        re_exclude_list = [
-            re.compile(r'(hate|against|support|learn|stud(?:y|ie)|language|lingual|speak|food|dish|cuisine|culture|music|drama|tv|movie)'),
-        ]
-        # for reg in re_list:
-        #     res = reg.findall(text)
-        #     if res:
-        #         flag=False
-        #         for reg in re_exclude_list:
-        #             if reg.search(text):
-        #                 flag=True
-        #                 break
-        #         if flag==False:
-        #             results.extend(res)
-        
-        ## step 2: for substring-level
-        substrings = self.split_description_to_substrings(text)
-        for substring in substrings:
-            res=reg.findall(substring)
+
+        for reg,subcategory in zip(
+            [re_ind,re_mex,re_irish,re_can,re_ger,re_usa,re_kor,re_jap,re_afr],
+            ['indian','mexican','irish','canadian','german','american','korean','japanese','african']):
+            res = reg.findall(text)
             if res:
                 flag=False
-                for reg_exclude in re_exclude_list:
-                    if reg_exclude.search(substring):
+                for reg in re_exclude_list:
+                    if reg.search(text):
                         flag=True
                         break
                 if flag==False:
-                    results.extend(res)
+                    results.append((subcategory,res))
         if results:
-            results = list(set(results))
-            return '|'.join([f'ethnicity_{x}:'+x.strip() for x in results])
+            out=[]
+            for subcategory,V in results:
+                V=list(set(V))
+                out.append(f'ethnicity_{subcategory}:%s'%','.join(V))
+            return '|'.join(out)
         else:
             return
+
 
     def extract_religion(self, text):
         text=text.lower()
