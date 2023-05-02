@@ -116,9 +116,11 @@ def week_diff_to_month_diff(week):
 def get_identities():
     """Simply returns the list of identities
     """
-    user_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity'
-    identities = sorted([file.split('.')[1] for file in os.listdir(os.path.join(user_data_dir,'with_tweet_identity')) if file.startswith('all_covariates')])
-    return identities
+    id_dir = '/shared/3/projects/bio-change/results/experiments/identity-classifier/tweets_replies'
+    return sorted(os.listdir(id_dir))
+    # user_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity'
+    # identities = sorted([file.split('.')[1] for file in os.listdir(os.path.join(user_data_dir,'with_tweet_identity')) if file.startswith('all_covariates')])
+    # return identities
 
 if __name__=='__main__':
     # get_weekly_bins()
