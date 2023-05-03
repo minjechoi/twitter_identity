@@ -197,14 +197,14 @@ def collect_tweets(input_file, save_dir):
     elif input_file.endswith('.bz2'):
         f = bz2.open(input_file,'rt')
 
-    input_file = input_file.replace('tweets.','').strip()
+    # input_file = input_file.replace('tweets.','').strip()
     save_file=input_file.split('/')[-1].replace('.bz2','.gz')
     outf = gzip.open(join(save_dir, 'tweets.'+save_file), 'wt')
 
     try:
         for ln,line in enumerate(f):
-            if ln>10000:
-                break
+            # if ln>10000:
+            #     break
             # if ln%1000000==0:
             #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
             # if ln>1000000:
@@ -467,9 +467,9 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
-
     for twitter_file in files:
-        inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file)))
+        inputs.append((join(load_dir,twitter_file), save_dir))
+        # inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file)))
     # try:
     # pool.map(collect_tweets,files)
     pool.starmap(fun,inputs)
