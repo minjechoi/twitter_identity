@@ -169,7 +169,7 @@ def add_reply_info(obj,out):
     out['tweet_type']='reply' if obj['in_reply_to_status_id_str'] else 'mention'
     return out
 
-def collect_tweets(file, save_dir):
+def collect_tweets(input_file, save_dir):
     """Loads 
 
     Args:
@@ -178,53 +178,33 @@ def collect_tweets(file, save_dir):
     tweets=[]
     start = time()
 
-    # load the treated & control users
-    # treated_dir='/scratch/drom_root/drom0/minje/bio-change/05.classifier-training-data/'
-    # save_dir='/scratch/drom_root/drom0/minje/bio-change/05.classifier-training-data/all-tweets'
-
     start = time()
-    print(f'Starting {file}')
+    print(f'Starting {input_file}')
 
     # load users
     valid_users=set()
-    user_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/propensity'
-    for typ in ['without_tweet_identity','with_tweet_identity']:
-        for user_file in sorted(os.listdir(join(user_dir,typ))):
-            if user_file.startswith('all_covariates'):
-                with open(join(user_dir,typ,user_file)) as f:
-                    for ln,line in enumerate(f):
-                        if ln>0:
-                            uid=line.split('\t')[0]
-                            valid_users.add(uid)
-        
-    # with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_treated_users.tsv') as f:
-    #     for line in f:
-    #         line=line.split('\t')
-    #         uid=line[1]
-    #         valid_users.add(uid)
-    # with open('/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users/all_potential_control_users.tsv') as f:
-    #     for line in f:
-    #         line=line.split('\t')
-    #         uid=line[0]
-    #         valid_users.add(uid)
+    user_dir='/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users'
+    for file in os.listdir(user_dir):
+        if file.startswith('1_change'):
+            df=pd.read_csv(join(user_dir,file),sep='\t',dtype={'user_id':str})
+            valid_users.update(df['user_id'])
 
     uid2user = {} # to store user info
 
-
     cnt = 0
-    if file.endswith('.gz'):
-        f = gzip.open(file,'rt')
-    elif file.endswith('.bz2'):
-        f = bz2.open(file,'rt')
+    if input_file.endswith('.gz'):
+        f = gzip.open(input_file,'rt')
+    elif input_file.endswith('.bz2'):
+        f = bz2.open(input_file,'rt')
 
-    file = file.replace('tweets.','').strip()
-    save_file=file.split('/')[-1].replace('.bz2','.gz')
+    input_file = input_file.replace('tweets.','').strip()
+    save_file=input_file.split('/')[-1].replace('.bz2','.gz')
     outf = gzip.open(join(save_dir, 'tweets.'+save_file), 'wt')
 
     try:
         for ln,line in enumerate(f):
-            # if ln>100000:
-            #     break
+            if ln>10000:
+                break
             # if ln%1000000==0:
             #     print(f'{file.split("/")[-1]}\t{ln}\t{int(time()-start)} seconds!')
             # if ln>1000000:
@@ -280,8 +260,6 @@ def collect_tweets(file, save_dir):
                         except:
                             print("Error in add_reply_info function!")
                             continue
-                
-
 
                 # get data at the end
                 outf.write(json.dumps(out)+'\n')
@@ -296,7 +274,7 @@ def collect_tweets(file, save_dir):
     with gzip.open(join(save_dir, 'users.'+save_file), 'wt') as outf:
         for obj in uid2user.values():
             outf.write(json.dumps(obj)+'\n')
-    print(f'Completed {file.split("/")[-1]}\t{cnt}/{ln} lines!\t{int(time()-start)} seconds!')
+    print(f'Completed {input_file.split("/")[-1]}\t{cnt}/{ln} lines!\t{int(time()-start)} seconds!')
     return
 
 def collect_user_info(user_id_file, twitter_file, save_dir):
@@ -391,6 +369,30 @@ def extract_network_data(load_file,save_file):
     
     return
 
+def collect_ego_network_data(file,save_dir):
+    start = time()
+    print(f'Starting {file}')
+
+    # load users
+    valid_users=set()
+    user_file='/scratch/drom_root/drom0/minje/bio-change/08.ego-network/all_nodes.txt'
+    with open(user_file) as f:
+        for line in f:
+            valid_users.add(line.strip())
+    
+    # load original tweets
+    cnt = 0
+    if file.endswith('.gz'):
+        f = gzip.open(file,'rt')
+    elif file.endswith('.bz2'):
+        f = bz2.open(file,'rt')
+
+    file = file.replace('tweets.','').strip()
+    save_file=file.split('/')[-1].replace('.bz2','.gz')
+    outf = gzip.open(join(save_dir, 'tweets.'+save_file), 'wt')
+    
+    return
+
 def test_multiprocessing():
     import multiprocessing
     # Short example demonstrating how to determine the number of cores available.
@@ -452,7 +454,8 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
     print(f'Number of CPU cores: {number_of_cores}')
 
 
-    files = sorted([file for file in os.listdir(load_dir) if file.startswith('tweets')])
+    # files = sorted([file for file in os.listdir(load_dir) if file.startswith('tweets')])
+    files = sorted(os.listdir(load_dir))
 
     if type(modulo)==str:
         modulo=int(modulo)
@@ -504,12 +507,12 @@ if __name__=='__main__':
     # if not os.path.exists(save_dir):
     #     os.makedirs(save_dir)
     
-    load_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets'
-    save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/2.all-networks'
-    if len(sys.argv)==2:
-        set_multiprocessing(fun=extract_network_data,load_dir=load_dir,save_dir=save_dir, modulo=sys.argv[1])
-    else:
-        set_multiprocessing(fun=extract_network_data,load_dir=load_dir,save_dir=save_dir)
+    # load_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/1.ego-tweets'
+    # save_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/2.all-networks'
+    # if len(sys.argv)==2:
+    #     set_multiprocessing(fun=extract_network_data,load_dir=load_dir,save_dir=save_dir, modulo=sys.argv[1])
+    # else:
+    #     set_multiprocessing(fun=extract_network_data,load_dir=load_dir,save_dir=save_dir)
         # set_multiprocessing(save_dir=save_dir, files=files)
     
 
@@ -520,7 +523,9 @@ if __name__=='__main__':
     #     )
     
     # set_multiprocessing()
-    # set_multiprocessing(sys.argv[1])
+    load_dir='/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    set_multiprocessing(fun=collect_tweets,load_dir=load_dir,save_dir=save_dir,modulo=sys.argv[1])
 
     # merge_user_files(
     #     start_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego_tweets',
