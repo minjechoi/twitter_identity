@@ -99,6 +99,38 @@ def get_weekly_counts(data_dir, save_file):
     write_data_file_info(__file__, get_weekly_counts.__name__, save_file, [data_dir])
     return
 
+def get_identity_tweet_counts(tweet_dir, score_dir, save_dir):
+    df_tweet = pd.read_csv(join(tweet_dir,'tweets_replies.en.4_weeks.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    df_retweet = pd.read_csv(join(tweet_dir,'retweets_quotes.en.4_weeks.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+    
+    for identity in get_identities():
+        df = pd.concat([df_tweet[['user_id']],df_retweet[['user_id']]],axis=0).drop_duplicates()
+        for i,tweet_type in enumerate(['tweet','retweet']):
+            # if tweet_type=='tweet':
+            #     df1=pd.read_csv(join(tweet_dir,'tweets_replies.en.4_weeks.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+            # elif tweet_type=='retweet':
+            #     df1=pd.read_csv(join(tweet_dir,'retweets_quotes.en.4_weeks.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+
+            df1 = [df_tweet,df_retweet][i][['user_id']]
+            with open(join(score_dir,f'{tweet_type}-classifier.{identity}.txt')) as f:
+                scores=[float(x) for x in f.readlines()]
+            df1['score']=scores
+            
+            # get count of identity-specific tweets
+            df2=df1[df1.score>=0.5].groupby('user_id').count().reset_index()
+            df2.columns=['user_id',f'n_identity_{tweet_type}s']
+            df = df.merge(df2,on=['user_id'],how='left').fillna(0)
+            
+            # get mean of identity-specific tweets
+            df3=df1[df1.score>=0.5].groupby('user_id').count().reset_index()
+            df3.columns=['user_id',f'mean_identity_{tweet_type}s']
+            df = df.merge(df3,on=['user_id'],how='left').fillna(0)
+            
+        # save
+        df.to_csv(join(save_dir,f'identity_tweets.{identity}.df.tsv'),sep='\t',index=False)
+    write_data_file_info(__file__, get_identity_tweet_counts.__name__, save_dir, [tweet_dir,score_dir])
+    return
+
 def propensity_matching_worker(save_dir, identity, change='added', include_text_score=False):
     """
     change: either ['added','removed'], to indicate whether a user added or removed an identity phrase
@@ -111,15 +143,16 @@ def propensity_matching_worker(save_dir, identity, change='added', include_text_
     if os.path.exists(join(save_dir,f'smd.{identity}.df.tsv')):
         print("Skipping ",identity)
         return
-        
+    
     # get list of treated and control users
     user_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/before-matching'
     if change=='added':
-        df_pos=pd.read_csv(join(user_dir,'users_01.df.tsv'),sep='\t',dtype={'user_id':str})
-        df_neg=pd.read_csv(join(user_dir,'users_00.df.tsv'),sep='\t',dtype={'user_id':str})
+        df_pos=pd.read_csv(join(user_dir,'1_change.type_01.df.tsv'),sep='\t',dtype={'user_id':str})
+        df_neg=pd.read_csv(join(user_dir,'1_change.type_00.df.tsv'),sep='\t',dtype={'user_id':str})
     elif change=='removed':
-        df_pos=pd.read_csv(join(user_dir,'users_10.df.tsv'),sep='\t',dtype={'user_id':str})
-        df_neg=pd.read_csv(join(user_dir,'users_11.df.tsv'),sep='\t',dtype={'user_id':str})
+        df_pos=pd.read_csv(join(user_dir,'1_change.type_10.df.tsv'),sep='\t',dtype={'user_id':str})
+        df_neg=pd.read_csv(join(user_dir,'1_change.type_11.df.tsv'),sep='\t',dtype={'user_id':str})
+        df_neg=df_neg[df_neg.identity==identity] # restrict to samples where the identity is present in both before and after
 
     df_pos['week_treated']=df_pos['dt_after'].apply(get_weekly_bins)
     df_neg['week_treated']=df_neg['dt_after'].apply(get_weekly_bins)
@@ -130,19 +163,20 @@ def propensity_matching_worker(save_dir, identity, change='added', include_text_
     df_neg['label']=0
     df_cov=pd.concat([df_pos2,df_neg],axis=0)
     
-    # merge with covariates
-    df=pd.read_csv('/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweet-count/past_1_month.tweets_and_retweets.df.tsv',sep='\t',dtype={'user_id':str})
-    df_cov=df_cov.merge(df,on=['user_id'],how='inner')
-
-    df=pd.read_csv('/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/profile-stats/stats.df.tsv',sep='\t',dtype={'user_id':str})
-    df_cov=df_cov.merge(df.drop(columns=['created_at'],axis=1),on=['user_id'],how='inner')    
+    print(f'{identity}: {len(df_pos2)} positive / {len(df_neg)} negative')
     
-    df=pd.read_csv('/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweet-scores/english_tweets-4_weeks.df.tsv.gz',
-                    sep='\t',dtype={'user_id':str},usecols=['user_id'])
-    with open(f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweet-scores/identity-scores/tweet-classifier.{identity}.txt') as f:
-        scores=[float(x) for x in f.readlines()]
-    df['tweet_identity_score']=scores
-    df=df[df.tweet_identity_score>=0.5].groupby('user_id').count().reset_index()
+    ## merge with covariates
+    # stats from profile
+    df=pd.read_csv('/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/profile-stats/user_activity_features.df.tsv',sep='\t',dtype={'user_id':str})
+    df_cov=df_cov.merge(df.drop(columns=['created_at'],axis=1),on=['user_id'],how='inner')    
+
+    # tweet and retweet counts
+    df=pd.read_csv('/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-count/past_1_month.tweets_and_retweets.df.tsv',sep='\t',dtype={'user_id':str})
+    df_cov=df_cov.merge(df,on=['user_id'],how='left').fillna(0)
+
+    # identity tweet and retweet scores
+    df=pd.read_csv(f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-scores/outputs/identity_tweets.{identity}.df.tsv',
+                    sep='\t',dtype={'user_id':str})
     df_cov=df_cov.merge(df,on=['user_id'],how='left').fillna(0)
 
     df=pd.read_csv('/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/profile-scores/desc_before.df.tsv',
@@ -157,7 +191,7 @@ def propensity_matching_worker(save_dir, identity, change='added', include_text_
     valid_covariates=X.columns.tolist()
     valid_covariates = [cov for cov in valid_covariates if cov not in ['user_id','week_treated']]
     if include_text_score==False:
-        valid_covariates = [cov for cov in valid_covariates if cov!='tweet_identity_score']
+        valid_covariates = [cov for cov in valid_covariates if (cov.startswith('mean_identity') is False) and (cov.startswith('n_identity') is False)]
     scaler=StandardScaler()
     X[valid_covariates]=scaler.fit_transform(X[valid_covariates])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -261,7 +295,7 @@ def combine_covariates(user_dir, base_dir, save_dir):
     
     return
 
-def propensity_matching(save_dir, include_text_score=False):
+def propensity_matching(save_dir, change='added', include_text_score=False):
     # identity_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/past_tweets/identity-scores'
     # identities = [file.split('.')[1] for file in sorted(os.listdir(identity_dir)) if file.startswith('retweet-classifier')]
     identities = get_identities()
@@ -269,7 +303,7 @@ def propensity_matching(save_dir, include_text_score=False):
     inputs = []
     for identity in sorted(identities):
         # inputs.append((save_dir,identity,include_text_score))    
-        propensity_matching_worker(save_dir,identity,include_text_score)
+        propensity_matching_worker(save_dir,identity,change,include_text_score)
 
     # pool.starmap(propensity_matching_worker, inputs)
     # propensity_matching_worker(*inputs[0])
@@ -298,9 +332,15 @@ if __name__=='__main__':
     # desc_info_file = '/shared/3/projects/bio-change/data/interim/description_changes/filtered/description_changes_1plus_changes.tsv.gz'
     # obtain_description_features(valid_users, desc_info_file, save_dir)
 
-    past_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/raw-tweets'
-    save_file = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-count/past_1_month.tweets_and_retweets.df.tsv'
-    get_weekly_counts(past_data_dir, save_file)
+    # past_data_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/raw-tweets'
+    # save_file = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-count/past_1_month.tweets_and_retweets.df.tsv'
+    # get_weekly_counts(past_data_dir, save_file)
+    
+    # tweet_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-scores'
+    # score_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-scores/identity-scores'
+    # save_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/covariates/past-tweets/past-tweet-scores/outputs'
+    # get_identity_tweet_counts(tweet_dir, score_dir, save_dir)
+    
     
     # user_dir = '/shared/3/projects/bio-change/data/interim/treated-control-users'
     # base_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching'
@@ -308,11 +348,8 @@ if __name__=='__main__':
     # # identity = 'gender_nonbinary'
     # combine_covariates(user_dir,base_dir,save_dir)
     
-    # save_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/without_tweet_identity'
-    # propensity_matching(save_dir,False)
-    # save_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/with_tweet_identity'
-    # propensity_matching(save_dir,True)
-    
-    # cov_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-covariates'
-    # save_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/propensity/with_tweet_identity'
-    # propensity_matching(cov_dir,save_dir,True)
+    save_dir = '/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/'
+    # propensity_matching(save_dir,'added',True)
+    # propensity_matching(save_dir,'added',False)
+    propensity_matching(save_dir,'removed',True)
+    propensity_matching(save_dir,'removed',False)
