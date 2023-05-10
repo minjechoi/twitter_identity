@@ -9,11 +9,13 @@ import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import chi2
-from statsmodels.discrete.count_model import ZeroInflatedPoisson,ZeroInflatedGeneralizedPoisson,Poisson
+from statsmodels.discrete.count_model import ZeroInflatedPoisson,ZeroInflatedGeneralizedPoisson,Poisson,ZeroInflatedNegativeBinomialP
 from statsmodels.genmod.generalized_estimating_equations import GEE
 from twitter_identity.utils.utils import get_identities
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+from twitter_identity.utils.utils import get_identities
 
 # added due to greatlakes
 # def get_identities():
@@ -23,6 +25,385 @@ import seaborn as sns
 #     identities = sorted([file.split('.')[1] for file in os.listdir(user_data_dir) if file.startswith('all_covariates')])
 #     return identities
 pid=os.getpid()
+
+# 05.08.23
+def regression_total_count(tweet_type='tweet',mode='added'):
+    """
+    Regression that looks at whether the number of tweets/retweets increased 
+    """
+    assert tweet_type in ['tweet','retweet'],"'tweet_type' should be either 'tweet' or 'retweet'!"
+    assert mode in ['added','removed'],"'mode' should be either 'added' or 'removed'!"
+    
+    identities = get_identities()
+    for identity in identities:
+        score_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/scores'
+        if mode=='added':
+            cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/change_added-with_text/all_covariates.{identity}.df.tsv'
+        elif mode=='removed':
+            cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/change_removed-with_text/all_covariates.{identity}.df.tsv'
+        
+        # load covariates
+        df_cov=pd.read_csv(cov_file,sep='\t',dtype={'user_id':str})
+        df_cov=df_cov.rename(columns={'label':'in_treatment_group'})
+        df_cov=df_cov[['user_id','week_treated','in_treatment_group','fri','fol','sta','profile_identity_score']]
+        df0=pd.DataFrame([0,1],columns=['t>=T'])
+        df_cov=df_cov.merge(df0,how='cross')
+        
+        # get tweet counts
+        tweet_dir='/shared/3/projects/bio-change/data/interim/treated-matched-tweets/tweets-around-update'
+        df_tweet=pd.read_csv(join(tweet_dir,f'{tweet_type}.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        df_tweet=df_tweet[(df_tweet.week_difference>=-4)&(df_tweet.week_difference<=4)]
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df1=df_tweet[['user_id','t>=T','text']]
+        df1=df1.groupby(['user_id','t>=T']).count().reset_index()
+        df1=df1.rename(columns={'text':f'n_total_{tweet_type}s'})
+        df_cov=df_cov.merge(df1,on=['user_id','t>=T'],how='left').fillna(0)
+        
+        df_out = df_cov
+        # process covariates
+        df_out['treatment_effect']=df_out.in_treatment_group * df_out['t>=T']
+        valid_columns = [
+            'fri','fol','sta', # user activity history
+            'profile_identity_score', # identity score of previous profile
+            'in_treatment_group', # is assigned into treatment group
+            'treatment_effect', # has been treated
+            't>=T',
+            ]
+
+        # set up a regression task using statsmodels
+        scaler = StandardScaler()
+        X = pd.concat(
+            [
+                df_out[valid_columns],
+                pd.get_dummies(df_out['week_treated'],prefix='week_treated',drop_first=True),
+            ],
+            axis=1
+        )
+        X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
+        y = df_out[f'n_total_{tweet_type}s']
+        groups=df_out.user_id
+        X = sm.add_constant(X)
+        
+        for model_type in ['gee_poisson','poisson','negative_binomial',
+                           'gee_negative_binomial']:
+            save_dir = f'/shared/3/projects/bio-change/results/experiments/activity-change/regressions/total_count/{tweet_type}-{mode}/{model_type}'
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            save_file=join(save_dir,f'summary.{identity}.df.tsv')
+            if os.path.exists(join(save_dir,save_file)):
+                continue
+            try:
+                print(identity,model_type)
+                if model_type=='gee_poisson':
+                    model = GEE(endog=y,exog=X,family=sm.families.Poisson(), groups=groups)
+                    result=model.fit(maxiter=10000)
+                elif model_type=='poisson':
+                    model = sm.Poisson(endog=y,exog=X)
+                    result=model.fit_regularized(maxiter=10000)
+                elif model_type=='negative_binomial':
+                    model = sm.NegativeBinomialP(endog=y,exog=X)
+                    result=model.fit_regularized(maxiter=10000)
+                elif model_type=='gee_negative_binomial':
+                    model = GEE(endog=y,exog=X,family=sm.families.NegativeBinomial(), groups=groups)
+                    result=model.fit(maxiter=10000)
+                    
+                with open(save_file,'w') as f:
+                    f.write(str(result.summary2()))
+            except:
+                with open(join(save_dir,f'error.{identity}.txt'),'w') as f:
+                    f.write("Cannot complete regression!\nSkipping...")
+                continue
+            
+                
+            # save results as dataframe
+            res=result.conf_int()
+            res.columns=['coef_low','coef_high']
+            res['coef']=result.params # coef
+            res['pval']=result.pvalues
+            res = res.reset_index()
+            save_file=join(save_dir,f'table.{identity}.df.tsv')
+            res = res[['index','pval','coef','coef_low','coef_high']]
+            res.to_csv(save_file,sep='\t',index=False)
+            print(f"Finished saving results for total activity change in {tweet_type}:{identity}:{mode}")
+    return
+
+def regression_identity_count(tweet_type='tweet',mode='added'):
+    """
+    Regression that looks at whether the number of tweets/retweets increased 
+    """
+    assert tweet_type in ['tweet','retweet'],"'tweet_type' should be either 'tweet' or 'retweet'!"
+    assert mode in ['added','removed'],"'mode' should be either 'added' or 'removed'!"
+    
+    identities = get_identities()
+    for identity in identities:
+        if mode=='added':
+            cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/change_added-with_text/all_covariates.{identity}.df.tsv'
+        elif mode=='removed':
+            cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/change_removed-with_text/all_covariates.{identity}.df.tsv'
+        
+        # load covariates
+        df_cov=pd.read_csv(cov_file,sep='\t',dtype={'user_id':str})
+        df_cov=df_cov.rename(columns={'label':'in_treatment_group'})
+        df_cov=df_cov[['user_id','week_treated','in_treatment_group','fri','fol','sta','profile_identity_score']]
+        df0=pd.DataFrame([0,1],columns=['t>=T'])
+        df_cov=df_cov.merge(df0,how='cross')
+        
+        # get tweet counts
+        tweet_dir='/shared/3/projects/bio-change/data/interim/treated-matched-tweets/tweets-around-update'
+        df_tweet=pd.read_csv(join(tweet_dir,f'{tweet_type}.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        df_tweet=df_tweet[(df_tweet.week_difference>=-4)&(df_tweet.week_difference<=4)]
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df1=df_tweet[['user_id','t>=T','text']]
+        df1=df1.groupby(['user_id','t>=T']).count().reset_index()
+        df1=df1.rename(columns={'text':f'n_total_{tweet_type}s'})
+        df_cov=df_cov.merge(df1,on=['user_id','t>=T'],how='left').fillna(0)
+        
+        # get tweet identity scores
+        tweet_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/input-texts'
+        score_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/identity-scores'
+        df_tweet=pd.read_csv(join(tweet_dir,f'{tweet_type}.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        with open(join(score_dir,f'{tweet_type}-classifier.{identity}.txt')) as f:
+            scores=f.readlines()
+        scores=[float(x) for x in scores]
+        df_tweet['score']=scores
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df2=df_tweet[['user_id','t>=T','score']]
+        df2=df2[df2.score>=0.5].groupby(['user_id','t>=T']).count().reset_index()
+        df2=df2.rename(columns={'score':f'n_identity_{tweet_type}s'})        
+        df_cov=df_cov.merge(df2,on=['user_id','t>=T'],how='left').fillna(0)
+
+        df_out = df_cov
+        # process covariates
+        df_out['treatment_effect']=df_out.in_treatment_group * df_out['t>=T']
+        valid_columns = [
+            'fri','fol','sta', # user activity history
+            'profile_identity_score', # identity score of previous profile
+            'in_treatment_group', # is assigned into treatment group
+            'treatment_effect', # has been treated
+            't>=T',
+            f'n_total_{tweet_type}s'
+            ]
+
+        # set up a regression task using statsmodels
+        scaler = StandardScaler()
+        X = pd.concat(
+            [
+                df_out[valid_columns],
+                pd.get_dummies(df_out['week_treated'],prefix='week_treated',drop_first=True),
+            ],
+            axis=1
+        )
+        X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
+        X[f'n_total_{tweet_type}s']=[np.log(x+1) for x in X[f'n_total_{tweet_type}s']]
+        y = df_out[f'n_identity_{tweet_type}s']
+        groups=df_out.user_id
+        X = sm.add_constant(X)
+        
+        for model_type in ['gee_poisson','poisson','negative_binomial','gee_negative_binomial']:
+            save_dir = f'/shared/3/projects/bio-change/results/experiments/activity-change/regressions/identity_count/{tweet_type}-{mode}/{model_type}'
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            save_file=join(save_dir,f'summary.{identity}.df.tsv')
+            if os.path.exists(join(save_dir,save_file)):
+                continue
+            try:
+                print(identity,model_type)
+                if model_type=='gee_poisson':
+                    model = GEE(endog=y,exog=X,family=sm.families.Poisson(), groups=groups)
+                    result=model.fit(maxiter=10000)
+                elif model_type=='poisson':
+                    model = sm.Poisson(endog=y,exog=X)
+                    result=model.fit_regularized(maxiter=10000)
+                elif model_type=='negative_binomial':
+                    model = sm.NegativeBinomialP(endog=y,exog=X)
+                    result=model.fit_regularized(maxiter=10000)
+                # elif model_type=='zero_inflated_negative_binomial':
+                #     model = ZeroInflatedNegativeBinomialP(endog=y, exog=X)
+                #     result=model.fit_regularized(maxiter=10000)
+                # elif model_type=='zero_inflated_poisson':
+                #     model = result=model.fit_regularized(maxiter=10000)
+                elif model_type=='gee_negative_binomial':
+                    model = GEE(endog=y,exog=X,family=sm.families.NegativeBinomial(), groups=groups)
+                    result=model.fit(maxiter=10000)
+                    
+                with open(save_file,'w') as f:
+                    f.write(str(result.summary2()))
+            except:
+                with open(join(save_dir,f'error.{identity}.txt'),'w') as f:
+                    f.write("Cannot complete regression!\nSkipping...")
+                continue
+                
+            # save results as dataframe
+            res=result.conf_int()
+            res.columns=['coef_low','coef_high']
+            res['coef']=result.params # coef
+            res['pval']=result.pvalues
+            res = res.reset_index()
+            save_file=join(save_dir,f'table.{identity}.df.tsv')
+            res = res[['index','pval','coef','coef_low','coef_high']]
+            res.to_csv(save_file,sep='\t',index=False)
+            print(f"Finished saving results for total activity change in {tweet_type}:{identity}:{mode}")
+    return
+
+def regression_offensive_count(tweet_type='tweet',mode='added'):
+    """
+    Regression that looks at whether the number of tweets/retweets increased 
+    """
+    assert mode in ['added','removed'],"'mode' should be either 'added' or 'removed'!"
+    if tweet_type!='tweet':
+        print("tweet_type should always be 'tweet'!")
+        return
+    
+    identities = get_identities()
+    for identity in identities:
+        if mode=='added':
+            cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/change_added-with_text/all_covariates.{identity}.df.tsv'
+        elif mode=='removed':
+            cov_file=f'/shared/3/projects/bio-change/data/interim/propensity-score-matching/users/after-matching/change_removed-with_text/all_covariates.{identity}.df.tsv'
+        
+        # load covariates
+        df_cov=pd.read_csv(cov_file,sep='\t',dtype={'user_id':str})
+        df_cov=df_cov.rename(columns={'label':'in_treatment_group'})
+        df_cov=df_cov[['user_id','week_treated','in_treatment_group','fri','fol','sta','profile_identity_score']]
+        df0=pd.DataFrame([0,1],columns=['t>=T'])
+        df_cov=df_cov.merge(df0,how='cross')
+        
+        # get tweet counts
+        tweet_dir='/shared/3/projects/bio-change/data/interim/treated-matched-tweets/tweets-around-update'
+        df_tweet=pd.read_csv(join(tweet_dir,f'tweet.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        df_tweet=df_tweet[(df_tweet.week_difference>=-4)&(df_tweet.week_difference<=4)]
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df1=df_tweet[['user_id','t>=T','text']]
+        df1=df1.groupby(['user_id','t>=T']).count().reset_index()
+        df1=df1.rename(columns={'text':f'n_total_tweets'})
+        df_cov=df_cov.merge(df1,on=['user_id','t>=T'],how='left').fillna(0)
+        
+        # get tweet identity scores
+        tweet_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/input-texts'
+        score_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/identity-scores'
+        df_tweet=pd.read_csv(join(tweet_dir,f'tweet.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        with open(join(score_dir,f'tweet-classifier.{identity}.txt')) as f:
+            scores=f.readlines()
+        scores=[float(x) for x in scores]
+        df_tweet['score']=scores
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df2=df_tweet[['user_id','t>=T','score']]
+        df2=df2[df2.score>=0.5].groupby(['user_id','t>=T']).count().reset_index()
+        df2=df2.rename(columns={'score':f'n_identity_tweets'})        
+        df_cov=df_cov.merge(df2,on=['user_id','t>=T'],how='left').fillna(0)
+
+        # get tweet offensiveness scores
+        score_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/offensiveness-scores'
+        with open(join(score_dir,f'tweets-{identity}.txt')) as f:
+            scores=f.readlines()
+        scores=[float(x) for x in scores]
+        df_tweet['score']=scores
+        df3=df_tweet[['user_id','t>=T','score']]
+        df3=df3[df3.score>=0.5].groupby(['user_id','t>=T']).count().reset_index()
+        df3=df3.rename(columns={'score':f'n_offensive_tweets'})        
+        df_cov=df_cov.merge(df3,on=['user_id','t>=T'],how='left').fillna(0)
+
+        # get reply counts
+        tweet_dir='/shared/3/projects/bio-change/data/interim/treated-matched-tweets/replies-around-update'
+        df_tweet=pd.read_csv(join(tweet_dir,f'responses.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        df_tweet=df_tweet[(df_tweet.week_difference>=-4)&(df_tweet.week_difference<=4)]
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df4=df_tweet[['user_id','t>=T','text']]
+        df4=df4.groupby(['user_id','t>=T']).count().reset_index()
+        df4=df4.rename(columns={'text':f'n_total_replies'})
+        df_cov=df_cov.merge(df4,on=['user_id','t>=T'],how='left').fillna(0)
+
+        # get reply offensiveness scores
+        tweet_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/input-texts'
+        df_tweet=pd.read_csv(join(tweet_dir,f'responses.{identity}.df.tsv.gz'),sep='\t',dtype={'user_id':str})
+        score_dir='/shared/3/projects/bio-change/data/interim/rq-language-identity/offensiveness-scores'
+        with open(join(score_dir,f'responses-{identity}.txt')) as f:
+            scores=f.readlines()
+        scores=[float(x) for x in scores]
+        df_tweet['score']=scores
+        df_tweet=df_tweet[(df_tweet.week_difference>=-4)&(df_tweet.week_difference<=4)]
+        df_tweet['t>=T']=(df_tweet.week_difference>=0).astype(int)
+        df5=df_tweet[['user_id','t>=T','score']]
+        df5=df5[df5.score>=0.5].groupby(['user_id','t>=T']).count().reset_index()
+        df5=df5.rename(columns={'score':f'n_offensive_replies'})        
+        df_cov=df_cov.merge(df5,on=['user_id','t>=T'],how='left').fillna(0)
+
+        df_out = df_cov
+        # process covariates
+        df_out['treatment_effect']=df_out.in_treatment_group * df_out['t>=T']
+        valid_columns = [
+            'fri','fol','sta', # user activity history
+            'profile_identity_score', # identity score of previous profile
+            'in_treatment_group', # is assigned into treatment group
+            'treatment_effect', # has been treated
+            't>=T',
+            'n_total_tweets',
+            'n_identity_tweets',
+            'n_offensive_tweets',
+            'n_total_replies',
+            ]
+
+        # set up a regression task using statsmodels
+        scaler = StandardScaler()
+        X = pd.concat(
+            [
+                df_out[valid_columns],
+                pd.get_dummies(df_out['week_treated'],prefix='week_treated',drop_first=True),
+            ],
+            axis=1
+        )
+        X[['fri','fol','sta']]=scaler.fit_transform(X[['fri','fol','sta']])
+        X['n_total_tweets']=[np.log(x+1) for x in X[f'n_total_tweets']]
+        X['n_identity_tweets']=[np.log(x+1) for x in X[f'n_identity_tweets']]
+        X['n_offensive_tweets']=[np.log(x+1) for x in X[f'n_offensive_tweets']]
+        X['n_total_replies']=[np.log(x+1) for x in X[f'n_total_replies']]
+        y = df_out['n_offensive_replies']
+        groups=df_out.user_id
+        X = sm.add_constant(X)
+        
+        for model_type in ['gee_poisson','poisson','negative_binomial',
+                           'gee_negative_binomial']:
+            save_dir = f'/shared/3/projects/bio-change/results/experiments/activity-change/regressions/offensive_count/{tweet_type}-{mode}/{model_type}'
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            save_file=join(save_dir,f'summary.{identity}.df.tsv')
+            if os.path.exists(join(save_dir,save_file)):
+                continue
+            try:
+                print(identity,model_type)
+                if model_type=='gee_poisson':
+                    model = GEE(endog=y,exog=X,family=sm.families.Poisson(), groups=groups)
+                    result=model.fit(maxiter=10000)
+                elif model_type=='poisson':
+                    model = sm.Poisson(endog=y,exog=X)
+                    result=model.fit_regularized(maxiter=10000)
+                elif model_type=='negative_binomial':
+                    model = sm.NegativeBinomialP(endog=y,exog=X)
+                    result=model.fit_regularized(maxiter=10000)
+                elif model_type=='gee_negative_binomial':
+                    model = GEE(endog=y,exog=X,family=sm.families.NegativeBinomial(), groups=groups)
+                    result=model.fit(maxiter=10000)
+                    
+                with open(save_file,'w') as f:
+                    f.write(str(result.summary2()))
+            except:
+                with open(join(save_dir,f'error.{identity}.txt'),'w') as f:
+                    f.write("Cannot complete regression!\nSkipping...")
+                continue
+                
+            # save results as dataframe
+            res=result.conf_int()
+            res.columns=['coef_low','coef_high']
+            res['coef']=result.params # coef
+            res['pval']=result.pvalues
+            res = res.reset_index()
+            save_file=join(save_dir,f'table.{identity}.df.tsv')
+            res = res[['index','pval','coef','coef_low','coef_high']]
+            res.to_csv(save_file,sep='\t',index=False)
+            print(f"Finished saving results for offensive count change in tweet:{identity}:{mode}")
+    return
+
+
 
 def week_diff_to_month_diff(week):
     """Switches week difference to month difference. Month difference here is actually 4-weeks
@@ -922,29 +1303,11 @@ def run_api_offensive_regression_worker(rq, agg, est, identity, tweet_type, mode
         
     return
 
-def run_regression(idx=None):
-    identities = get_identities()
-    settings=[]
+def run_regression(fun):
     inputs = []
-    for est in ['abs']:
-        for time_unit in ['month']:
-            for rq in ['language','activity']:
-                for model_type in ['gee']:
-                # for model_type in ['gee','poisson']:
-                    settings.append((est,time_unit,rq,model_type))
-    if idx:
-        settings=[settings[int(idx)]]
-
-    print('settings:',settings)
-    for est,time_unit,rq,model_type in settings:
-        for agg in ['count']:
-                # for tweet_type in ['tweet']:
-                for tweet_type in ['tweet','retweet']:
-                    for identity in identities:
-                        inputs.append((rq, time_unit, agg, est, identity, tweet_type, model_type))
-
-    for input in inputs:
-        run_regression_worker(*input)
+    for tweet_type in ['tweet','retweet']:
+        fun(tweet_type,mode='added')
+    # fun('retweet','removed')
     return
 
 def run_weekly_regression(idx=None):
@@ -1068,7 +1431,10 @@ if __name__=='__main__':
     # else:
     
     
-    run_regression()
+    run_regression(fun=regression_total_count)
+    run_regression(fun=regression_identity_count)
+    run_regression(fun=regression_offensive_count)
+    
     # run_past_regression()
     # run_api_offensive_regression()
     # run_offensive_regression()
