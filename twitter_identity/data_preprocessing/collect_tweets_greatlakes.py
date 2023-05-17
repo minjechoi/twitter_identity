@@ -183,7 +183,7 @@ def collect_tweets(input_file, save_dir):
 
     # load users
     valid_users=set()
-    user_dir='/scratch/drom_root/drom0/minje/bio-change/01.treated-control-users'
+    user_dir='/scratch/drom_root/drom0/minje/bio-change/01.users'
     for file in os.listdir(user_dir):
         if file.startswith('1_change'):
             df=pd.read_csv(join(user_dir,file),sep='\t',dtype={'user_id':str})
@@ -340,57 +340,463 @@ def test_fn(idx):
     # print(f'{idx} Slept 10 seconds!')
     return idx
 
-def extract_network_data(load_file,save_file):
+def extract_network_data(load_file,save_dir):
+    # load users
+    # df_users = pd.DataFrame()
+    # uid_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users/change_added-with_text'
+    # for file in sorted(os.listdir(uid_dir)):
+    #     if file.startswith('all_covariates'):
+    #         df=pd.read_csv(join(uid_dir,file),sep='\t',dtype={'user_id':str})
+    #         df_users=pd.concat([df_users,df],axis=0)
+    # df_users=df_users[['user_id','week_treated']].drop_duplicates()
     
-    with gzip.open(load_file,'rt') as f,\
-        gzip.open(save_file,'wt') as outf:
-        for line in f:
+    # uid2week={uid:week for uid,week in df_users.values}
+    
+    save_file = join(save_dir,load_file.split('/')[-1])
+    
+    with gzip.open(load_file,'rt') as f,gzip.open(save_file,'wt') as outf:
+        try:
+            for ln,line in enumerate(f):
+                # if ln>100000:
+                #     break
+                obj=json.loads(line)
+                lang=obj['lang']
+                tid = obj['id']
+                typ = obj['tweet_type']
+                uid_responded = obj['user_id']
+                dt=obj['created_at']
+                if typ in ['retweet','quote']:
+                    uid_origin=obj['user_id_origin']
+                    if uid_responded!=uid_origin:
+                        dt=get_weekly_bins(dt)
+                        outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
+                        # out.append((typ,dt,uid_responded,uid_origin))
+                elif typ in ['reply','tweet']:
+                    if len(obj['user_mentions'])==0:
+                        continue
+                    else:
+                        dt=get_weekly_bins(dt)                
+                        for _,_,uid_origin in obj['user_mentions']:
+                            if uid_responded!=uid_origin:
+                                outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
+                                # out.append((typ,dt,uid_responded,uid_origin))
+        except:
+            pass
+    return
+
+def collect_ego_network_data(load_file,save_dir=None):
+    start = time()
+    print(f'Starting {load_file}')
+    
+    # load users
+    df_users = pd.DataFrame()
+    uid_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users/change_added-with_text'
+    for file in sorted(os.listdir(uid_dir)):
+        if file.startswith('all_covariates'):
+            df=pd.read_csv(join(uid_dir,file),sep='\t',dtype={'user_id':str})
+            df_users=pd.concat([df_users,df],axis=0)
+    df_users=df_users[['user_id','week_treated']].drop_duplicates()
+    
+    uid2week={uid:week for uid,week in df_users.values}
+    
+    # Step 1: get ego network from existing tweets
+    S_uids = set() # all user ids
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/08.ego-network/01.ego_edges'
+    with gzip.open(join(tweet_dir,load_file),'rt') as f,\
+        gzip.open(join(save_dir,load_file),'wt') as outf:
+        for ln,line in enumerate(f):            
             obj=json.loads(line)
             lang=obj['lang']
             tid = obj['id']
             typ = obj['tweet_type']
             uid_responded = obj['user_id']
             dt=obj['created_at']
+            wc=get_weekly_bins(dt) # current week
+            flag = False
+            
+            if uid_responded in uid2week:
+                wt = uid2week[uid_responded] # treated week
+                if np.abs(wt-wc)<=12:
+                    flag=True
+            
             if typ in ['retweet','quote']:
                 uid_origin=obj['user_id_origin']
                 if uid_responded!=uid_origin:
-                    dt=get_weekly_bins(dt)
-                    outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
-                    # out.append((typ,dt,uid_responded,uid_origin))
+                    if uid_origin in uid2week:
+                        wt = uid2week[uid_origin] # treated week
+                        if np.abs(wt-wc)<=12:
+                            flag=True
+                    if flag:
+                        S_uids.update([uid_responded,uid_origin])
+                        outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
+                    
             elif typ in ['reply','tweet']:
                 if len(obj['user_mentions'])==0:
                     continue
                 else:
-                    dt=get_weekly_bins(dt)                
                     for _,_,uid_origin in obj['user_mentions']:
                         if uid_responded!=uid_origin:
-                            outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
-                            # out.append((typ,dt,uid_responded,uid_origin))
+                            if uid_origin in uid2week:
+                                wt = uid2week[uid_origin] # treated week
+                                if np.abs(wt-wc)<=12:
+                                    flag=True
+                            if flag:
+                                S_uids.update([uid_responded,uid_origin])
+                                outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid_responded}\t{uid_origin}\n')
+                                
+    print(len(S_uids),' users whose interactions should be collected!')
+                            
+    # Step 2: get all networks from the raw tweets
+    tweet_dir='/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/08.ego-network/02.alter_edges'
+    f=bz2.open(join(tweet_dir,load_file.replace('tweets.decahose','decahose').replace('.gz','.bz2')),'rt')
+    outf=gzip.open(join(save_dir,load_file),'wt')
     
+    try:
+    # if True:
+        for ln,line in enumerate(f):
+            edges = []
+            
+            # load object
+            try:
+            # if True:
+                obj=json.loads(line)
+                dt = obj['created_at']
+                lang = obj['lang']
+                tid = obj['id_str']
+            except:
+                print("Error reading json! Skipping...")
+                continue
+            
+            uid_responded = obj['user']['id_str']
+            S_tmp = set([uid_responded])
+            
+            if 'retweeted_status' in obj:
+                uid_origin = obj['retweeted_status']['user']['id_str']
+                if uid_responded!=uid_origin:
+                    edges.append((uid_responded,uid_origin,'retweet'))
+                    S_tmp.add(uid_origin)
+                    
+            if 'quoted_status' in obj:
+                uid_origin = obj['quoted_status']['user']['id_str']
+                if uid_responded!=uid_origin:
+                    edges.append((uid_responded,uid_origin,'quote'))
+                    S_tmp.add(uid_origin)
+                    
+            if obj['in_reply_to_user_id_str']:
+                uid_origin = obj['in_reply_to_user_id_str']
+                if uid_responded!=uid_origin:
+                    edges.append((uid_responded,uid_origin,'reply'))
+                    S_tmp.add(uid_origin)
+                    
+            if 'entities' in obj:
+                if 'user_mentions' in obj['entities']:
+                    for v in obj['entities']['user_mentions']:
+                        if 'id_str' in v:
+                            uid_origin = v['id_str']
+                            if (uid_responded!=uid_origin) & (uid_origin not in S_tmp):
+                                edges.append((uid_responded,uid_origin,'mention'))
+                                S_tmp.add(uid_origin)
+            
+            
+            for uid1,uid2,typ in edges:
+                if (uid1 in S_uids) or (uid2 in S_uids):
+                    # outf.write(f'{typ}\t{dt}\t{lang}\t{tid}\t{uid1}\t{uid2}\n')
+                    outf.write(f'{typ}\t{lang}\t{tid}\t{uid1}\t{uid2}\n')
+    except:
+        pass
+
+    f.close()
+    outf.close()
     return
 
-def collect_ego_network_data(file,save_dir):
-    start = time()
-    print(f'Starting {file}')
-
-    # load users
-    valid_users=set()
-    user_file='/scratch/drom_root/drom0/minje/bio-change/08.ego-network/all_nodes.txt'
-    with open(user_file) as f:
+def get_past_tweets(load_file,save_dir):
+    # load user ids and get week of treatment
+    uid_dir = '/scratch/drom_root/drom0/minje/bio-change/01.users/treated-control-users/'
+    df=pd.DataFrame()
+    for file in os.listdir(uid_dir):
+        if file.startswith('1_change'):
+            df2=pd.read_csv(join(uid_dir,file),sep='\t',dtype={'user_id':str})
+            df=pd.concat([df,df2],axis=0)
+    df['week_treated']=df['dt_after'].apply(get_weekly_bins)
+    df=df[['user_id','week_treated','desc_after']]
+    df.columns=['user_id','week_treated','text']
+    uid2dt={uid:dt for uid,dt in df[['user_id','week_treated']].values}
+    
+    tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    
+    with gzip.open(join(tweet_dir,load_file),'rt') as f,\
+        gzip.open(join(save_dir,load_file),'wt') as outf:
         for line in f:
-            valid_users.add(line.strip())
-    
-    # load original tweets
-    cnt = 0
-    if file.endswith('.gz'):
-        f = gzip.open(file,'rt')
-    elif file.endswith('.bz2'):
-        f = bz2.open(file,'rt')
+            obj=json.loads(line)
+            if 'tweet_type' in obj:
+                typ = obj['tweet_type']
+            else:
+                continue
+            lang = obj['lang']
+            # if typ in ['tweet','reply']:
+            if typ in ['retweet','quote']:
+                uid = obj['user_id']
+                if uid in uid2dt:
+                    wt = uid2dt[uid]
+                    wc = get_weekly_bins(obj['created_at'])
+                    wd = wc-wt
+                    if (wd>=-4) and (wd<=-1):
+                        if typ=='quote':
+                            text = obj['text_origin']
+                        else:
+                            text = obj['text']
+                        text = re.sub(r'http\S+','',text)
+                        text = ' '.join(text.replace('\n','').replace('\t','').split()).strip()
+                        if len(text):
+                            outf.write('\t'.join([uid,str(wt),str(wd),typ,lang,text])+'\n')
+    return
 
-    file = file.replace('tweets.','').strip()
-    save_file=file.split('/')[-1].replace('.bz2','.gz')
-    outf = gzip.open(join(save_dir, 'tweets.'+save_file), 'wt')
+def get_identity_activity_tweets_worker(identity,tweet_type,wd_min=-12,wd_max=12):
+    # for each of the treated / matched users, get their recent activities
+    uid_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users'
+    df=pd.DataFrame()
+    for ex_type in ['change_added-with_text','change_removed-with_text']:
+        df1=pd.read_csv(join(uid_dir,ex_type,f'all_covariates.{identity}.df.tsv'),sep='\t',dtype={'user_id':str})
+        df=pd.concat([df,df1[['user_id','week_treated']]])
+    uid2dt={uid:dt for uid,dt in df[['user_id','week_treated']].values}
     
+    tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    files = sorted([file for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
+    
+    S=set()
+    out = []
+    for file in files:
+        with gzip.open(join(tweet_dir,file),'rt') as f:
+            try:
+                for line in f:
+                    obj=json.loads(line)
+                    if 'tweet_type' in obj:
+                        typ = obj['tweet_type']
+                    else:
+                        continue
+                    lang = obj['lang']
+                    if tweet_type=='tweet':
+                        if typ not in ['tweet','reply']:
+                            continue
+                    elif tweet_type=='retweet':
+                        if typ not in ['retweet','quote']:
+                            continue
+                    tid = obj['id']
+                    uid = obj['user_id']
+                    if uid in uid2dt:
+                        wt = uid2dt[uid]
+                        wc = get_weekly_bins(obj['created_at'])
+                        wd = wc-wt
+                        if (wd>=wd_min) and (wd<=wd_max):
+                            if typ=='quote':
+                                text = obj['text_origin']
+                            else:
+                                text = obj['text']
+                            text = ' '.join(text.replace('\n','').replace('\t','').split()).strip()
+                            text = re.sub(r'http\S+','URL',text)
+                            text2 = re.sub(r'@\w+','',text).replace('URL','')
+                            text2 = ' '.join(text2.split()).strip()
+                            if len(text2)>0:
+                                has_content=True
+                            else:
+                                has_content=False
+                            if tid in S:
+                                continue
+                            else:
+                                S.add(tid)
+                            out.append((tid,uid,wt,wd,typ,lang,has_content,text))
+            except:
+                continue
+    df = pd.DataFrame(out,columns=['tweet_id','user_id','week_treated','week_difference','tweet_type','lang','has_content','text'])
+    save_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/4.activities-by-identity'
+    df.to_csv(join(save_dir,f'{tweet_type}.{identity}.df.tsv.gz'),sep='\t',index=False,compression='gzip')
+    return
+
+def get_identity_response_tweets_worker(identity,wd_min=-12,wd_max=12):
+    # for each of the treated / matched users, get their recent replies from others
+    uid_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users'
+    df=pd.DataFrame()
+    for ex_type in ['change_added-with_text','change_removed-with_text']:
+        df1=pd.read_csv(join(uid_dir,ex_type,f'all_covariates.{identity}.df.tsv'),sep='\t',dtype={'user_id':str})
+        df=pd.concat([df,df1[['user_id','week_treated']]])
+    uid2dt={uid:dt for uid,dt in df[['user_id','week_treated']].values}
+    
+    tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    files = sorted([file for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
+    
+    S = set()
+    
+    out = []
+    for file in files:
+        with gzip.open(join(tweet_dir,file),'rt') as f:
+            try:
+                for line in f:
+                    obj=json.loads(line)
+                    if 'tweet_type' in obj:
+                        typ = obj['tweet_type']
+                    else:
+                        continue
+                    lang = obj['lang']
+                    if typ not in ['reply','tweet']:
+                        continue
+                    tid = obj['id']
+                    uid_responded = obj['user_id']
+                    for _,_,uid in obj['user_mentions']:
+                        if uid in uid2dt:
+                            wt = uid2dt[uid]
+                            wc = get_weekly_bins(obj['created_at'])
+                            wd = wc-wt
+                            if (wd>=wd_min) and (wd<=wd_max):
+                                if typ=='quote':
+                                    text = obj['text_origin']
+                                else:
+                                    text = obj['text']
+                                text = ' '.join(text.replace('\n','').replace('\t','').split()).strip()
+                                text = re.sub(r'http\S+','URL',text)
+                                text2 = re.sub(r'@\w+','',text).replace('URL','')
+                                text2 = ' '.join(text2.split()).strip()
+                                if len(text2)>0:
+                                    has_content=True
+                                else:
+                                    has_content=False
+                                if tid in S:
+                                    continue
+                                else:
+                                    S.add(tid)
+                                out.append((tid,uid,uid_responded,wt,wd,typ,lang,has_content,text))
+            except:
+                continue
+    df = pd.DataFrame(out,columns=['tweet_id','user_id','user_id_replied','week_treated','week_difference','tweet_type','lang','has_content','text'])
+    save_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/5.responses-by-identity'
+    df.to_csv(join(save_dir,f'responses.{identity}.df.tsv.gz'),sep='\t',index=False,compression='gzip')
+    return
+
+def get_ego_network_worker(identity,save_dir,wd_min=-12,wd_max=12):
+    import networkx as nx
+    g=nx.DiGraph()
+    
+    # for each of the treated / matched users, get their recent activities
+    uid_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users'
+    df=pd.DataFrame()
+    for ex_type in ['change_added-with_text','change_removed-with_text']:
+        df1=pd.read_csv(join(uid_dir,ex_type,f'all_covariates.{identity}.df.tsv'),sep='\t',dtype={'user_id':str})
+        df=pd.concat([df,df1[['user_id','week_treated']]])
+    uid2dt={uid:dt for uid,dt in df[['user_id','week_treated']].values}
+
+    # # since it is costly to store strings in the network, convert to indices
+    # # this will be updated as more nodes are added to the network
+    # idx=0
+    # uid2idx = {}
+    # for uid in uid2dt.keys():
+    #     uid2idx[uid]=idx
+    #     idx+=1
+    
+    ## First round: get all edges involving a treated/matched user
+    tweet_dir = '/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    files = sorted([file for file in os.listdir(tweet_dir) if file.startswith('tweets.')])
+    
+    out = []
+    for file in files:
+        with gzip.open(join(tweet_dir,file),'rt') as f:
+            try:
+                for line in f:
+                    obj=json.loads(line)
+                    if 'tweet_type' in obj:
+                        typ = obj['tweet_type']
+                    else:
+                        continue
+                    uid = obj['user_id']
+                    if typ in ['tweet','reply']:
+                        uids2 = [x[2] for x in obj['user_mentions'] if x[2]!=uid]
+                        if uid in uid2dt:
+                            wt = uid2dt[uid]
+                            wc = get_weekly_bins(obj['created_at'])
+                            wd = wc-wt
+                            if (wd>=wd_min) and (wd<=wd_max):
+                                for uid2 in uids2:
+                                    g.add_edge(uid,uid2)
+                        for uid2 in uids2:
+                            if uid2 in uid2dt:
+                                wt = uid2dt[uid2]
+                                wc = get_weekly_bins(obj['created_at'])
+                                wd = wc-wt
+                                if (wd>=wd_min) and (wd<=wd_max):
+                                    g.add_edge(uid2,uid)
+                    elif typ in ['retweet','quote']:
+                        uid2 = obj['user_id_origin']
+                        if uid in uid2dt:
+                            wt = uid2dt[uid]
+                            wc = get_weekly_bins(obj['created_at'])
+                            wd = wc-wt
+                            if (wd>=wd_min) and (wd<=wd_max):
+                                g.add_edge(uid,uid2)
+                        if uid2 in uid2dt:
+                            wt = uid2dt[uid2]
+                            wc = get_weekly_bins(obj['created_at'])
+                            wd = wc-wt
+                            if (wd>=wd_min) and (wd<=wd_max):
+                                g.add_edge(uid,uid2)
+            except:
+                continue
+    
+    ## Save in-out degree nodes
+    with gzip.open(join(save_dir,f'in_edges.{identity}.tsv.gz'),'wt') as f:
+        for uid in uid2dt.keys():
+            if uid in g:
+                edges = [x for x in list(g.in_edges(uid)) if x!=uid]
+            else:
+                edges = []
+            f.write(uid+'\t'+','.join(edges)+'\n')
+
+    with gzip.open(join(save_dir,f'out_edges.{identity}.tsv.gz'),'wt') as f:
+        for uid in uid2dt.keys():
+            if uid in g:
+                edges = [x for x in list(g.out_edges(uid)) if x!=uid]
+            else:
+                edges = []
+            f.write(uid+'\t'+','.join(edges)+'\n')
+                            
+    ## Second round: get ego network to compute cluster coefficient and such
+    
+
+    for file in files:
+        with gzip.open(join(tweet_dir,file),'rt') as f:
+            try:
+                if tweet_type=='tweet':
+                    if typ not in ['tweet','reply']:
+                        continue
+                elif tweet_type=='retweet':
+                    if typ not in ['retweet','quote']:
+                        continue
+                tid = obj['id']
+                uid = obj['user_id']
+                if uid in uid2dt:
+                    wt = uid2dt[uid]
+                    wc = get_weekly_bins(obj['created_at'])
+                    wd = wc-wt
+                    if (wd>=wd_min) and (wd<=wd_max):
+                        if typ=='quote':
+                            text = obj['text_origin']
+                        else:
+                            text = obj['text']
+                        text = ' '.join(text.replace('\n','').replace('\t','').split()).strip()
+                        text = re.sub(r'http\S+','URL',text)
+                        text2 = re.sub(r'@\w+','',text).replace('URL','')
+                        text2 = ' '.join(text2.split()).strip()
+                        if len(text2)>0:
+                            has_content=True
+                        else:
+                            has_content=False
+                        out.append((tid,uid,wt,wd,typ,lang,has_content,text))
+            except:
+                continue
+    df = pd.DataFrame(out,columns=['tweet_id','user_id','week_treated','week_difference','tweet_type','lang','has_content','text'])
+    save_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/4.activities-by-identity'
+    
+    
+    print("Networkx works!")
     return
 
 def test_multiprocessing():
@@ -454,8 +860,8 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
     print(f'Number of CPU cores: {number_of_cores}')
 
 
-    # files = sorted([file for file in os.listdir(load_dir) if file.startswith('tweets')])
-    files = sorted(os.listdir(load_dir))
+    files = sorted([file for file in os.listdir(load_dir) if file.startswith('tweets')])
+    # files = sorted([file for file in os.listdir(load_dir) if ('p1.' in file) or ('p2.' in file)])
 
     if type(modulo)==str:
         modulo=int(modulo)
@@ -468,7 +874,8 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
         os.makedirs(save_dir)
         
     for twitter_file in files:
-        inputs.append((join(load_dir,twitter_file), save_dir))
+        inputs.append((twitter_file, save_dir))
+        # inputs.append((join(load_dir,twitter_file), save_dir))
         # inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file)))
     # try:
     # pool.map(collect_tweets,files)
@@ -478,12 +885,42 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
     pool.close()
     return
 
+def get_identity_activity_tweets():
+    pool=Pool(32)
+    from os import sched_getaffinity
+    n_available_cores = len(sched_getaffinity(0))
+    print(f'Number of Available CPU cores: {n_available_cores}')
+    number_of_cores = int(os.environ['SLURM_CPUS_PER_TASK'])
+    print(f'Number of CPU cores: {number_of_cores}')
 
-def merge_user_files(start_dir, end_dir):
+    inputs = []
+    identity_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users/change_added-with_text'
+    identities = sorted([file.split('.')[1] for file in os.listdir(identity_dir) if file.startswith('all_covariates')])
+    # for tweet_type in ['tweet','retweet']:
+    #     for identity in identities:
+    #         inputs.append((identity,tweet_type))
+    # pool.starmap(get_identity_activity_tweets_worker,inputs)
+
+    for identity in identities:
+        inputs.append(identity)
+    pool.map(get_identity_response_tweets_worker,inputs)
+
+    # get_identity_response_tweets_worker(inputs[10])
+        
+    # get_identity_activity_tweets_worker(*inputs[10])
+    # finally:
+    pool.close()
+    return
+
+
+
+def merge_user_files(load_dir, save_dir):
     # merge files
     uid2profile = {}
-    for file in reversed(sorted(os.listdir(start_dir))):
-        with gzip.open(join(start_dir,file),'rt')  as f:
+    files = reversed(sorted([file for file in os.listdir(load_dir) if file.startswith('users.decahose.2020-04')]))
+    
+    for file in files:
+        with gzip.open(join(load_dir,file),'rt')  as f:
             for line in f:
                 obj=json.loads(line)
                 uid = obj['id_str']
@@ -491,10 +928,30 @@ def merge_user_files(start_dir, end_dir):
                     uid2profile[uid] = obj
     
     # save file
-    with gzip.open(join(end_dir,'user_profile-2020.04.json.gz'),'wt') as f:
+    with gzip.open(join(save_dir,'user_profile-2020.04.json.gz'),'wt') as f:
         for uid,obj in uid2profile.items():
             f.write(json.dumps(obj)+'\n')
     return
+
+def merge_tweets(load_dir, save_dir, save_file):
+    # merge files
+    files = sorted(os.listdir(load_dir))
+    
+    out = []
+    for file in files:
+        with gzip.open(join(load_dir,file),'rt')  as f:
+            try:
+                for line in f:
+                    uid,wt,wd,typ,lang,text = line.split('\t')
+                    out.append((uid,wt,wd,typ,lang,text.strip()))
+            except:
+                continue
+    
+    df = pd.DataFrame(out,columns=['user_id','week_treated','week_difference','tweet_type','lang','text'])
+    df.to_csv(join(save_dir,save_file),sep='\t',index=False)
+    return
+
+
 
 if __name__=='__main__':
     # test_multiprocessing()
@@ -523,10 +980,33 @@ if __name__=='__main__':
     #     )
     
     # set_multiprocessing()
-    load_dir='/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
-    save_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
-    set_multiprocessing(fun=collect_tweets,load_dir=load_dir,save_dir=save_dir,modulo=sys.argv[1])
 
+
+    # load_dir='/scratch/drom_root/drom0/minje/bio-change/temp-tweets'
+    # save_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    # set_multiprocessing(fun=collect_tweets,load_dir=load_dir,save_dir=save_dir,modulo=sys.argv[1])
+
+    load_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/08.ego-network/01.ego_edges'
+    set_multiprocessing(fun=collect_ego_network_data,load_dir=load_dir,save_dir=save_dir,modulo=sys.argv[1])
+
+    # merge user files into a single file
     # merge_user_files(
-    #     start_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego_tweets',
-    #     end_dir='/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/ego_tweets-collected_users')
+    #     load_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets',
+    #     save_dir='/scratch/drom_root/drom0/minje/bio-change/03.all-user-info/user_202004')
+
+    # extract past tweets for all potential users, to use in PSM
+    # load_dir = '/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    # save_dir='/scratch/drom_root/drom0/minje/bio-change/04.covariates/past-tweets/retweets_quotes/raw'
+    # set_multiprocessing(fun=get_past_tweets,load_dir=load_dir,save_dir=save_dir)
+
+    # load_dir = '/scratch/drom_root/drom0/minje/bio-change/04.covariates/past-tweets/retweets_quotes/raw'
+    # save_dir = '/scratch/drom_root/drom0/minje/bio-change/04.covariates/past-tweets/retweets_quotes/merged'
+    # merge_tweets(load_dir,save_dir,'retweets_quotes.4_weeks.df.tsv')
+    # load_dir = '/scratch/drom_root/drom0/minje/bio-change/04.covariates/past-tweets/tweets_replies/raw'
+    # save_dir = '/scratch/drom_root/drom0/minje/bio-change/04.covariates/past-tweets/tweets_replies/merged'
+    # merge_tweets(load_dir,save_dir,'tweets_replies.4_weeks.df.tsv')
+    
+    # get_identity_activity_tweets()
+    
+    # test_networkx()

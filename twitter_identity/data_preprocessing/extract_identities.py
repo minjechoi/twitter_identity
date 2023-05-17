@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 ALL_IDENTITIES = [
     'gender', 'sexuality', 'age', 
-    # 'ethnicity', 
+    'ethnicity', 
     'religion',
     'relationship', 'education', 'occupation', 'political',
     'socialmedia', 'sensitive']
@@ -39,7 +39,7 @@ class IdentityExtractor:
             'gender':self.extract_gender,
             'sexuality':self.extract_sexuality,
             'age':self.extract_age,
-            # 'ethnicity':self.extract_ethnicity,
+            'ethnicity':self.extract_ethnicity,
             'religion':self.extract_religion,
             'relationship':self.extract_relationship,
             'education':self.extract_education,
@@ -221,50 +221,48 @@ class IdentityExtractor:
         """
 
         results = []
-        text=text.lower()
+
+        re_ind = re.compile(r"(\b(?:indian?)\b|🇮🇳)")
+        re_mex = re.compile(r"(\b(?:m(?:é|e)xic(?:o|an))|🇲🇽)")
+        re_irish = re.compile(r"(\b(?:ireland|irish)\b|🇮🇪)")
+        re_can = re.compile(r"(\b(?:canada|canadian)\b|🇨🇦)")
+        re_ger = re.compile(r"(\b(?:germany?|deutsch)\b|🇩🇪)")
+        re_usa = re.compile(r'(\b(?:american?|usa)\b|🇺🇸)')
+        re_kor = re.compile(r'(\b(?:korean?)\b|🇰🇷)')
+        re_jap = re.compile(r'(\b(?:japan(?:ese)?)\b|🇯🇵)')
+        re_afr = re.compile(r'\b(african)\b')
+        re_bri = re.compile(r'(\b(?:british)\b|🇬🇧)')
         
-        re_list = [
-            re.compile(
-                r'\b(african|asian|hispanic|latin)'
-                # r'\b(african?|american?|asian|british|canada|canadian|mexican|england|english|european|french|indian|irish|japanese|spanish|uk|usa)\b'
-            ),
-            # re.compile(
-            #     r'\b(🇺🇸|🇬🇧|🇨🇦|🇮🇪|🇧🇷|🇲🇽|󠁧󠁢󠁧🇯🇵|🇪🇸|🇮🇹|🇫🇷|🇩🇪|🇳🇱|🇮🇳|🇮🇩|🇹🇷|🇸🇦|🇹🇭|🇵🇭|🇦🇷|🇰🇷|🇪🇬|🇲🇾|🇨🇴)',
-            # )
+        # re_list=[
+        #     re.compile(r"\b(allah|athies(?:t|m)|catholic|christ(?:ian(?:ity)?)?|church|god's|(?:of|for) god|god (?:comes )?first|god is|muslim|psalms?|philippians)\b")
+        #     # re.compile(r"\b(islam\w*|messiah|muslim|hind(?:u|i)\w*|christ(?:ian)|church|jesus|catholic|athies(?:t|m)|(?:of|for) god|god's|god (?:comes )?first|pastor|sermon)\b"),
+        #     # re.compile(r'((?:romans|james|proverbs|isiah|galatians|ephesians|paul|john|mark|luke|psalms|genesis|corinthians|philippians) [0-9]+\:)')
+        # ]
+        re_exclude_list=[
+            re.compile(r'(food|music|football|culture|movie|tv|speak|talk|class|cuisine|university|north korea|(central|south) america|k(-|\s)?(pop|drama)|anime|manga|support|hate|british columbia)')
         ]
-        reg = re_list[0]
-        
-        re_exclude_list = [
-            re.compile(r'(hate|against|support|learn|stud(?:y|ie)|language|lingual|speak|food|dish|cuisine|culture|music|drama|tv|movie)'),
-        ]
-        # for reg in re_list:
-        #     res = reg.findall(text)
-        #     if res:
-        #         flag=False
-        #         for reg in re_exclude_list:
-        #             if reg.search(text):
-        #                 flag=True
-        #                 break
-        #         if flag==False:
-        #             results.extend(res)
-        
-        ## step 2: for substring-level
-        substrings = self.split_description_to_substrings(text)
-        for substring in substrings:
-            res=reg.findall(substring)
+
+        for reg,subcategory in zip(
+            [re_ind,re_mex,re_irish,re_can,re_ger,re_usa,re_kor,re_jap,re_afr,re_bri],
+            ['indian','mexican','irish','canadian','german','american','korean','japanese','african','british']):
+            res = reg.findall(text)
             if res:
                 flag=False
-                for reg_exclude in re_exclude_list:
-                    if reg_exclude.search(substring):
+                for reg in re_exclude_list:
+                    if reg.search(text):
                         flag=True
                         break
                 if flag==False:
-                    results.extend(res)
+                    results.append((subcategory,res))
         if results:
-            results = list(set(results))
-            return '|'.join([f'ethnicity_{x}:'+x.strip() for x in results])
+            out=[]
+            for subcategory,V in results:
+                V=list(set(V))
+                out.append(f'ethnicity_{subcategory}:%s'%','.join(V))
+            return '|'.join(out)
         else:
             return
+
 
     def extract_religion(self, text):
         text=text.lower()
@@ -434,6 +432,8 @@ class IdentityExtractor:
 
             # 43-0000 Office and Administrative Support Occupations
             reg_administrative = re.compile(r'\b(?:(?:public|civil) servant)\b')
+            
+            # etc: influencers
 
             # Get phrases            
             res=reg_management.findall(substring)
@@ -705,6 +705,7 @@ class IdentityExtractor:
         
 
 
+
 def test_individual_extraction(text,identity='gender'):
     IdEx = IdentityExtractor()
     return IdEx.identity2extractor[identity](text)
@@ -778,13 +779,18 @@ def extract_identities_from_file(input_file,output_file):
     
     # get phrases
     cnt=0
-    with gzip.open(input_file,'rt') as f,\
-        gzip.open(output_file,'wt') as outf:
-            for line in tqdm(f,total=n_lines):
-                cnt+=1
-                # if cnt>=10000:
-                #     break
-                uid,dt,desc=line.split('\t')
+    with gzip.open(input_file,'rt') as f,gzip.open(output_file,'wt') as outf:
+        for line in f:
+            cnt+=1
+            # if cnt>=10000:
+            #     break
+            # uid,dt,desc=line.split('\t')
+            obj = json.loads(line)
+            uid = obj['id_str']
+            desc = obj['description']
+            if desc:
+                desc = re.sub(r'(\t|\n)',' ',desc)
+                desc = ' '.join(desc.split())
                 desc=desc.lower().strip()
                 obj = {}
                 for identity in ALL_IDENTITIES:
@@ -793,7 +799,12 @@ def extract_identities_from_file(input_file,output_file):
                     if res:
                         obj[identity]=res.lower()
                 res = sorted(list(obj.values()))
-                outf.write('\t'.join([uid,dt,desc]+res)+'\n')                    
+            else:
+                desc = ''
+                res = []
+            res = '|'.join(res)
+            # outf.write('\t'.join([uid,dt,desc]+res)+'\n')                    
+            outf.write('\t'.join([uid,desc,res])+'\n')                    
     return
     
 
@@ -839,7 +850,8 @@ def set_multiprocessing(fun, load_dir, save_dir, modulo=None):
         os.makedirs(save_dir)
         
     for twitter_file in files:
-        inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file),ALL_IDENTITIES))
+        inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file)))
+        # inputs.append((join(load_dir,twitter_file), join(save_dir,twitter_file),ALL_IDENTITIES))
     # try:
     # pool.map(collect_tweets,files)
     pool.starmap(fun,inputs)
@@ -900,9 +912,14 @@ if __name__=='__main__':
     # extract_identities_from_file(input_file,output_file)    
     
     # post-processing: removing cases where 2+ conflicting identities appear in the same person
-    input_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted/description_changes_0_changes.tsv.gz'
-    output_file='/shared/3/projects/bio-change/data/interim/description_changes/05.post-processed/description_changes_0_changes.tsv.gz'
-    post_processing(input_file,output_file)    
-    input_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted/description_changes_1_change.tsv.gz'
-    output_file='/shared/3/projects/bio-change/data/interim/description_changes/05.post-processed/description_changes_1_change.tsv.gz'
-    post_processing(input_file,output_file)
+    # input_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted/description_changes_0_changes.tsv.gz'
+    # output_file='/shared/3/projects/bio-change/data/interim/description_changes/05.post-processed/description_changes_0_changes.tsv.gz'
+    # post_processing(input_file,output_file)    
+    # input_file='/shared/3/projects/bio-change/data/interim/description_changes/04.identity-extracted/description_changes_1_change.tsv.gz'
+    # output_file='/shared/3/projects/bio-change/data/interim/description_changes/05.post-processed/description_changes_1_change.tsv.gz'
+    # post_processing(input_file,output_file)
+    
+    # extract identities from every single profile
+    load_dir='/scratch/drom_root/drom0/minje/bio-change/02.treated-control-tweets'
+    save_dir='/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/raw-outputs'
+    set_multiprocessing(fun=extract_identities_from_file,load_dir=load_dir,save_dir=save_dir,modulo=sys.argv[1] if len(sys.argv)>1 else None)

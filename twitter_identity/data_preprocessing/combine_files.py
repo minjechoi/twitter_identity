@@ -8,14 +8,15 @@ import re
 from multiprocessing import Pool
 from random import sample, shuffle
 from time import time
+import sys
 
 from sklearn.utils import resample
 import pandas as pd
 import ujson as json
 from tqdm import tqdm
-from ftlangdetect import detect
+# from ftlangdetect import detect
 
-from twitter_identity.utils.utils import write_data_file_info, strip_tweet
+# from twitter_identity.utils.utils import write_data_file_info, strip_tweet
 
 def merge_splitted_extracted_identities(load_dir,save_dir):
     """Merges the extracted identity shards
@@ -634,6 +635,49 @@ def combine_matched_users(load_dir, save_file):
     write_data_file_info(__file__, combine_matched_users.__name__, save_file, [load_dir])
     return
 
+def get_identity_by_week(identity):
+    start = time()
+    
+    file_dir = '/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/raw-outputs'
+    save_dir = '/scratch/drom_root/drom0/minje/bio-change/04.extract-identities/identity-by-week'
+
+    uid2data = {}
+    # aggregate users to file
+    for file in sorted(os.listdir(file_dir)):
+        wc = get_weekly_bins(file.split('.')[2])
+        with gzip.open(join(file_dir,file),'rt') as f:
+            for line in f:
+                line = line.strip().split('\t')
+                uid = line[0]
+                if uid not in uid2data:
+                    uid2data[uid]=[]
+                if len(line)==3:
+                    candidates = []
+                    for c1 in line[2].split('|'):
+                        candidates.append(c1.split(':')[0])
+                    if identity in candidates:
+                        uid2data[uid].append((wc,1))
+                    else:
+                        uid2data[uid].append((wc,0))
+        s = int(time()-start)
+        print(f'{file}! {s} seconds!')
+
+    with gzip.open(join(save_dir,f'{identity}.tsv.gz'),'wt') as outf:
+        for uid,V in uid2data.items():
+            V = V + [(68,0)] # add week after last week to end list
+            V=sorted(list(set(V)))
+            line_out = []
+            ln = len(V)
+            for i in range(ln-1):
+                w1,v1=V[i]
+                w2,v2=V[i+1]
+                if v1==1:
+                    line_out.append(f'{w1}_{w2}')
+
+            if len(line_out):
+                outf.write(uid+'\t'+','.join(line_out)+'\n')
+
+    return
 
 if __name__=='__main__':
     # merge the identity files
@@ -685,3 +729,12 @@ if __name__=='__main__':
     # load_dir='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/cem'
     # save_file='/shared/3/projects/bio-change/data/interim/propensity-score-matching/all-matches/cem_matches.df.tsv'
     # combine_matched_users(load_dir, save_file)
+
+    identity_dir = '/scratch/drom_root/drom0/minje/bio-change/07.matched-user-tweets/0.propensity-users/change_added-with_text'
+    identities = sorted([file.split('.')[1] for file in os.listdir(identity_dir) if file.startswith('all_covariates')])
+    print('before',identities)
+    if len(sys.argv)>=2:
+        identities = [identity for idx,identity in enumerate(identities) if idx%10==int(sys.argv[1])]
+    print('after',identities)
+    for identity in identities:
+        get_identity_by_week(identity)
